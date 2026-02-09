@@ -634,12 +634,15 @@ export async function getDashboardStats(filters?: {
         })
 
         // 4. Upcoming Events
+        // 4. Upcoming Events (Next 5 active events from today)
         const recentEvents = await prisma.event.findMany({
             take: 5,
             orderBy: { startDate: 'asc' },
             where: {
-                status: { notIn: ['CANCELLED', 'COMPLETADO'] }, // StartDate restrict removed to show ongoing/overdue
-                ...dateFilter
+                status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] },
+                startDate: {
+                    gte: new Date(new Date().setHours(0, 0, 0, 0)) // From start of today
+                }
             }
         })
 
@@ -921,6 +924,7 @@ export async function getDashboardStats(filters?: {
         }
     } catch (error) {
         console.error('Error fetching dashboard stats:', error)
+        if (error instanceof Error) console.error(error.stack)
         return { success: false, error: 'Error al cargar estadísticas' }
     }
 }
@@ -971,8 +975,10 @@ export async function getDamagedProductsHistory(filters?: {
                 }
             },
             orderBy: {
-                restoredAt: 'desc'
-            } as any
+                // If showing pending (restored=false), order by event end date (most recent damage)
+                // If showing restored, order by restoredAt
+                event: { endDate: 'desc' }
+            }
         })
 
         return {
@@ -992,8 +998,21 @@ export async function markDamageAsRestored(eventItemId: string) {
             data: {
                 damageRestored: true,
                 restoredAt: new Date()
-            } as any
+            } as any,
+            include: { product: true }
         })
+
+        // Decrement quantityDamaged on the product (mark as Available again)
+        if (updated.returnedDamaged > 0) {
+            await prisma.product.update({
+                where: { id: updated.productId },
+                data: {
+                    quantityDamaged: {
+                        decrement: updated.returnedDamaged
+                    }
+                } as any
+            })
+        }
 
         revalidatePath('/inventory/damages')
         revalidatePath('/')

@@ -125,7 +125,19 @@ export function parseInventoryExcel(file: File): Promise<ImportResult> {
 
                     // Validar campos obligatorios
                     const name = getValue(['Nombre del Producto', 'Producto', 'Nombre'])?.toString().trim()
+
+                    // Check if row is completely empty (common artifact in Excel)
                     if (!name) {
+                        const hasOtherData = [
+                            'Cantidad Total', 'Cantidad', 'Stock', 'Total',
+                            'Precio Unitario', 'Precio', 'Valor Unitario',
+                            'Precio de Daño', 'Precio Reemplazo', 'Valor Daño', 'Costo Reemplazo'
+                        ].some(key => getValue([key]) !== undefined)
+
+                        if (!hasOtherData) {
+                            return // Skip empty row
+                        }
+
                         errors.push(`Fila ${rowNum}: Falta el nombre del producto (Columna 'Producto' o 'Nombre del Producto')`)
                         return
                     }

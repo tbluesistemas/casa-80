@@ -22,7 +22,7 @@ const defaultData = {
     totalRevenue: 0,
     damageRevenue: 0,
     projectedRevenue: 0,
-    monthlyRevenue: [], 
+    monthlyRevenue: [],
     totalClients: 0,
     activeClients: 0,
     topClients: [],
@@ -40,17 +40,13 @@ export default function Home() {
     const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
-    // Load initial data with last month by default
+    // Load initial data with Current Month by default
     useEffect(() => {
         const now = new Date();
-        const lastMonth = now.getMonth(); // 0-11, current month is already "last month" conceptually
+        const currentMonth = now.getMonth() + 1; // 1-12
         const year = now.getFullYear();
 
-        // If we're in January, get December of last year
-        const defaultYear = lastMonth === 0 ? year - 1 : year;
-        const defaultMonth = lastMonth === 0 ? 12 : lastMonth;
-
-        loadStats(defaultYear, defaultMonth, true);
+        loadStats(year, currentMonth, true);
     }, []);
 
     const loadStats = async (year?: number | null, month?: number | null, isInitial: boolean = false) => {
@@ -58,14 +54,14 @@ export default function Home() {
         try {
             const filters: { year?: number; month?: number } = {};
 
-            // If no filters provided and not initial load, use last month as default
+            // If no filters provided and not initial load, use Current Month as default
             if (!isInitial && year === undefined && month === undefined) {
                 const now = new Date();
-                const lastMonth = now.getMonth();
+                const currentMonth = now.getMonth() + 1;
                 const currentYear = now.getFullYear();
 
-                filters.year = lastMonth === 0 ? currentYear - 1 : currentYear;
-                filters.month = lastMonth === 0 ? 12 : lastMonth;
+                filters.year = currentYear;
+                filters.month = currentMonth;
             } else {
                 if (year !== undefined && year !== null) filters.year = year;
                 if (month !== undefined && month !== null) filters.month = month;
@@ -89,13 +85,11 @@ export default function Home() {
     const handleClearFilters = () => {
         setSelectedYear(null);
         setSelectedMonth(null);
-        // When clearing, go back to last month default
+        // When clearing, go back to Current Month default
         const now = new Date();
-        const lastMonth = now.getMonth();
+        const currentMonth = now.getMonth() + 1;
         const year = now.getFullYear();
-        const defaultYear = lastMonth === 0 ? year - 1 : year;
-        const defaultMonth = lastMonth === 0 ? 12 : lastMonth;
-        loadStats(defaultYear, defaultMonth);
+        loadStats(year, currentMonth);
     };
 
     const formatCurrency = (amount: number) => {

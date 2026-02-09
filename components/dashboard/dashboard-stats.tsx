@@ -229,79 +229,77 @@ export function DashboardStats({ data }: DashboardStatsProps) {
                         </Button>
                     </CardHeader>
                     <CardContent>
-                        <div className="h-[250px] w-full">
-                            <ResponsiveContainer width="100%" height="100%" minHeight={250} minWidth={300}>
-                                {showChart === 'events' ? (
-                                    <BarChart data={data.monthlyStats} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                                        <XAxis
-                                            dataKey="name"
-                                            stroke="var(--muted-foreground)"
-                                            fontSize={12}
-                                            tickLine={false}
-                                            axisLine={false}
-                                            dy={10}
-                                        />
-                                        <YAxis
-                                            stroke="var(--muted-foreground)"
-                                            fontSize={12}
-                                            tickLine={false}
-                                            axisLine={false}
-                                        />
-                                        <Tooltip
-                                            cursor={{ fill: 'var(--muted)', opacity: 0.2 }}
-                                            contentStyle={{
-                                                borderRadius: '8px',
-                                                border: '1px solid var(--border)',
-                                                backgroundColor: 'var(--background)',
-                                                color: 'var(--foreground)'
-                                            }}
-                                        />
-                                        <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                                            {data.monthlyStats.map((entry, index) => (
-                                                <Cell key={`cell-${index}`} fill={entry.fill} />
-                                            ))}
-                                        </Bar>
-                                    </BarChart>
-                                ) : (
-                                    <LineChart data={data.monthlyRevenue || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                                        <XAxis
-                                            dataKey="name"
-                                            stroke="var(--muted-foreground)"
-                                            fontSize={12}
-                                            tickLine={false}
-                                            axisLine={false}
-                                            dy={10}
-                                        />
-                                        <YAxis
-                                            stroke="var(--muted-foreground)"
-                                            fontSize={12}
-                                            tickLine={false}
-                                            axisLine={false}
-                                            tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
-                                        />
-                                        <Tooltip
-                                            cursor={{ stroke: 'var(--muted)', strokeWidth: 1 }}
-                                            contentStyle={{
-                                                borderRadius: '8px',
-                                                border: '1px solid var(--border)',
-                                                backgroundColor: 'var(--background)',
-                                                color: 'var(--foreground)'
-                                            }}
-                                            formatter={(value: any) => formatCurrency(value)}
-                                        />
-                                        <Line
-                                            type="monotone"
-                                            dataKey="value"
-                                            stroke="var(--chart-1)"
-                                            strokeWidth={2}
-                                            dot={{ fill: 'var(--chart-1)', r: 4 }}
-                                            activeDot={{ r: 6 }}
-                                        />
-                                    </LineChart>
-                                )}
-                            </ResponsiveContainer>
+                        <div className="w-full h-[300px] overflow-x-auto flex justify-center items-center">
+                            {showChart === 'events' ? (
+                                <BarChart width={500} height={250} data={data.monthlyStats} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                                    <XAxis
+                                        dataKey="name"
+                                        stroke="var(--muted-foreground)"
+                                        fontSize={12}
+                                        tickLine={false}
+                                        axisLine={false}
+                                        dy={10}
+                                    />
+                                    <YAxis
+                                        stroke="var(--muted-foreground)"
+                                        fontSize={12}
+                                        tickLine={false}
+                                        axisLine={false}
+                                    />
+                                    <Tooltip
+                                        cursor={{ fill: 'var(--muted)', opacity: 0.2 }}
+                                        contentStyle={{
+                                            borderRadius: '8px',
+                                            border: '1px solid var(--border)',
+                                            backgroundColor: 'var(--background)',
+                                            color: 'var(--foreground)'
+                                        }}
+                                    />
+                                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                                        {data.monthlyStats.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                                        ))}
+                                    </Bar>
+                                </BarChart>
+                            ) : (
+                                <LineChart width={500} height={250} data={data.monthlyRevenue || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                                    <XAxis
+                                        dataKey="name"
+                                        stroke="var(--muted-foreground)"
+                                        fontSize={12}
+                                        tickLine={false}
+                                        axisLine={false}
+                                        dy={10}
+                                    />
+                                    <YAxis
+                                        stroke="var(--muted-foreground)"
+                                        fontSize={12}
+                                        tickLine={false}
+                                        axisLine={false}
+                                        tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                                    />
+                                    <Tooltip
+                                        cursor={{ stroke: 'var(--muted)', strokeWidth: 1 }}
+                                        contentStyle={{
+                                            borderRadius: '8px',
+                                            border: '1px solid var(--border)',
+                                            backgroundColor: 'var(--background)',
+                                            color: 'var(--foreground)'
+                                        }}
+                                        formatter={(value: any) => formatCurrency(value)}
+                                    />
+                                    <Line
+                                        type="monotone"
+                                        dataKey="value"
+                                        stroke="var(--chart-1)"
+                                        strokeWidth={2}
+                                        dot={{ fill: 'var(--chart-1)', r: 4 }}
+                                        activeDot={{ r: 6 }}
+                                    />
+                                </LineChart>
+                            )}
                         </div>
                     </CardContent>
                 </Card>
@@ -420,31 +418,33 @@ export function DashboardStats({ data }: DashboardStatsProps) {
             </div>
 
             {/* Top Clients Card */}
-            {data.topClients && data.topClients.length > 0 && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-base font-semibold">Top 5 Clientes Frecuentes</CardTitle>
-                        <CardDescription>Clientes con más eventos registrados</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                            {data.topClients.map((client, i) => (
-                                <div key={client.name} className="flex flex-col p-3 rounded-lg border bg-card/50 hover:bg-muted/50 transition-colors">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500/10 text-blue-600 text-xs font-bold">
-                                            {i + 1}
+            {
+                data.topClients && data.topClients.length > 0 && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-base font-semibold">Top 5 Clientes Frecuentes</CardTitle>
+                            <CardDescription>Clientes con más eventos registrados</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                                {data.topClients.map((client, i) => (
+                                    <div key={client.name} className="flex flex-col p-3 rounded-lg border bg-card/50 hover:bg-muted/50 transition-colors">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500/10 text-blue-600 text-xs font-bold">
+                                                {i + 1}
+                                            </div>
+                                            <span className="text-sm font-medium truncate flex-1" title={client.name}>
+                                                {client.name}
+                                            </span>
                                         </div>
-                                        <span className="text-sm font-medium truncate flex-1" title={client.name}>
-                                            {client.name}
-                                        </span>
+                                        <span className="text-xs text-muted-foreground">{client.eventCount} eventos</span>
                                     </div>
-                                    <span className="text-xs text-muted-foreground">{client.eventCount} eventos</span>
-                                </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
-        </div>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )
+            }
+        </div >
     )
 }
