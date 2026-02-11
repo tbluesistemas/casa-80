@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
-import { createEvent, CreateEventItem } from '@/lib/actions'
+import { useState, useMemo, useEffect, useTransition } from 'react'
+import { createEvent, CreateEventItem, getProducts } from '@/lib/actions'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { CalendarIcon, Minus, Plus, Search, ShoppingCart, Package, DollarSign } from 'lucide-react'
+import { CalendarIcon, Minus, Plus, Search, ShoppingCart, Package, DollarSign, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { ClientSelector } from '@/components/client-selector'
@@ -22,12 +22,14 @@ type Product = {
     name: string
     totalQuantity: number
     priceUnit?: number
+    description?: string | null
+    availableQuantity?: number
 }
 
 // Internal type for easier state management
 type CartItems = { [key: string]: number }
 
-export function BookingForm({ products }: { products: Product[] }) {
+export function BookingForm({ products: initialProducts }: { products: Product[] }) {
     const { role } = useAuth()
 
     // Form State
@@ -39,16 +41,45 @@ export function BookingForm({ products }: { products: Product[] }) {
     const [notes, setNotes] = useState('')
 
     // Product State
+    const [availableProducts, setAvailableProducts] = useState<Product[]>(initialProducts)
+    const [isFetchingAvailability, startTransition] = useTransition()
     const [searchTerm, setSearchTerm] = useState('')
     const [cart, setCart] = useState<CartItems>({})
     const [isSubmitting, setIsSubmitting] = useState(false)
 
+    // Fetch availability when dates change
+    useEffect(() => {
+        const fetchAvailability = async (start: Date, end: Date) => {
+            // Normalize to UTC range to match DB storage
+            const utcStart = new Date(Date.UTC(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0))
+            const utcEnd = new Date(Date.UTC(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59))
+
+            startTransition(async () => {
+                const { success, data } = await getProducts({ startDate: utcStart, endDate: utcEnd })
+                if (success && data) {
+                    setAvailableProducts(data as unknown as Product[])
+                }
+            })
+        }
+
+        if (startDate && endDate) {
+            fetchAvailability(startDate, endDate)
+        } else if (startDate && isAllDay) {
+            fetchAvailability(startDate, startDate)
+        } else {
+            // Reset to initial if no valid dates (or maybe we want to clear availability?)
+            // If no dates, we can't really promise availability.
+            // But we can show total stock for reference.
+            setAvailableProducts(initialProducts)
+        }
+    }, [startDate, endDate, isAllDay, initialProducts])
+
     // Filtered Products
     const filteredProducts = useMemo(() => {
-        return products.filter(p =>
+        return availableProducts.filter(p =>
             p.name.toLowerCase().includes(searchTerm.toLowerCase())
         )
-    }, [products, searchTerm])
+    }, [availableProducts, searchTerm])
 
     // Cart Logic
     const handleUpdateQuantity = (productId: string, delta: number) => {
@@ -57,10 +88,21 @@ export function BookingForm({ products }: { products: Product[] }) {
             const next = Math.max(0, current + delta)
 
             // Check stock limit
-            const product = products.find(p => p.id === productId)
-            if (product && next > product.totalQuantity) {
-                toast.error(`Solo hay ${product.totalQuantity} unidades disponibles`)
-                return prev
+            const product = availableProducts.find(p => p.id === productId)
+            if (product) {
+                // Use availableQuantity if dynamic fetch happened, otherwise fallback to total (but really we should have available)
+                // If initialProducts passed, availableQuantity might be undefined, so fallback to total
+                // BUT wait, dynamic fetch logic in getProducts NOW returns availableQuantity for static too?
+                // No, only if filters passed.
+                // If no dates selected, availableQuantity is undefined.
+                // If dates selected, it is defined.
+                // So: limit = availableQuantity ?? totalQuantity
+                const limit = product.availableQuantity !== undefined ? product.availableQuantity : product.totalQuantity
+
+                if (next > limit) {
+                    toast.error(`Solo hay ${limit} unidades disponibles para estas fechas`)
+                    return prev
+                }
             }
 
             if (next === 0) {
@@ -78,14 +120,16 @@ export function BookingForm({ products }: { products: Product[] }) {
         if (isNaN(qty)) return
 
         setCart(prev => {
-            const product = products.find(p => p.id === productId)
+            const product = availableProducts.find(p => p.id === productId)
 
             if (!product) return prev
 
             // Enforce limits
-            if (qty > product.totalQuantity) {
-                toast.error(`Solo hay ${product.totalQuantity} unidades disponibles`)
-                return { ...prev, [productId]: product.totalQuantity }
+            const limit = product.availableQuantity !== undefined ? product.availableQuantity : product.totalQuantity
+
+            if (qty > limit) {
+                toast.error(`Solo hay ${limit} unidades disponibles para estas fechas`)
+                return { ...prev, [productId]: limit }
             }
 
             if (qty <= 0) {
@@ -154,14 +198,14 @@ export function BookingForm({ products }: { products: Product[] }) {
     // Calculate cart items with prices
     const cartItems = useMemo(() => {
         return Object.entries(cart).map(([productId, quantity]) => {
-            const product = products.find(p => p.id === productId)
+            const product = availableProducts.find(p => p.id === productId)
             return {
                 product,
                 quantity,
                 subtotal: (product?.priceUnit || 0) * quantity
             }
         }).filter(item => item.product)
-    }, [cart, products])
+    }, [cart, availableProducts])
 
     const grandTotal = useMemo(() => {
         return cartItems.reduce((sum, item) => sum + item.subtotal, 0)
@@ -312,12 +356,16 @@ export function BookingForm({ products }: { products: Product[] }) {
                         />
                     </div>
 
-                    {selectedCount > 0 && (
-                        <div className="flex items-center justify-between bg-accent/50 p-2 rounded-lg text-sm text-foreground font-medium">
-                            <span className="flex items-center gap-2"><ShoppingCart className="h-4 w-4" /> {selectedCount} productos</span>
-                            <span>Total unidades: {totalItems}</span>
-                        </div>
-                    )}
+                    <div className="flex items-center justify-between">
+                        {isFetchingAvailability && <div className="text-xs text-muted-foreground flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" /> Actualizando disponibilidad...</div>}
+
+                        {selectedCount > 0 && (
+                            <div className="flex items-center justify-between bg-accent/50 p-2 rounded-lg text-sm text-foreground font-medium ml-auto">
+                                <span className="flex items-center gap-2"><ShoppingCart className="h-4 w-4" /> {selectedCount} productos</span>
+                                <span className="ml-4">Total unidades: {totalItems}</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Grid */}
@@ -386,17 +434,23 @@ function ProductCard({
     // Show controls if quantity > 0 OR if we are currently editing (focused)
     const showControls = quantity > 0 || isFocused
 
+    // Determine available stock to display
+    // If availableQuantity is defined, use it. Else use total.
+    const stockDisplay = product.availableQuantity !== undefined ? product.availableQuantity : product.totalQuantity
+    const stockColor = stockDisplay === 0 ? "text-red-500" : "text-muted-foreground"
+
     return (
         <div
             className={cn(
                 "group relative flex flex-col justify-between rounded-lg border bg-card p-4 transition-all hover:bg-accent/50 cursor-pointer",
-                showControls ? "border-primary ring-1 ring-primary" : "hover:border-primary/50"
+                showControls ? "border-primary ring-1 ring-primary" : "hover:border-primary/50",
+                stockDisplay === 0 && "opacity-60 grayscale"
             )}
-            onClick={() => !showControls && onUpdate(product.id, 1)}
+            onClick={() => !showControls && stockDisplay > 0 && onUpdate(product.id, 1)}
         >
             <div className="space-y-1">
                 <h3 className="font-semibold leading-tight">{product.name}</h3>
-                <p className="text-xs text-muted-foreground">Disp: {product.totalQuantity}</p>
+                <p className={cn("text-xs", stockColor)}>Disp: {stockDisplay}</p>
             </div>
 
             <div className="mt-4 flex items-center justify-end">
@@ -416,12 +470,23 @@ function ProductCard({
                             onClick={(e) => e.stopPropagation()}
                         />
 
-                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onUpdate(product.id, 1)}>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => onUpdate(product.id, 1)}
+                            disabled={quantity >= stockDisplay}
+                        >
                             <Plus className="h-3 w-3" />
                         </Button>
                     </div>
                 ) : (
-                    <Button size="icon" variant="secondary" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                        size="icon"
+                        variant="secondary"
+                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                        disabled={stockDisplay === 0}
+                    >
                         <Plus className="h-4 w-4" />
                     </Button>
                 )}

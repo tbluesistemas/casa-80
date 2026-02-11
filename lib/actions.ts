@@ -69,12 +69,63 @@ async function checkAvailability(
     return { success: true }
 }
 
-export async function getProducts() {
+export async function getProducts(filters?: {
+    startDate?: Date
+    endDate?: Date
+}) {
     try {
         const products = await prisma.product.findMany({
             orderBy: { name: 'asc' },
         })
-        return { success: true, data: products }
+
+        // Si no hay filtros, devolver inventario estático (o actual?)
+        // El usuario quiere que "se actualice automáticamente".
+        // Para "Inventario Principal", deberíamos usar "Ahora" si no se pasan fechas,
+        // O dejar que el cliente decida.
+        // Vamos a implementar la lógica de cálculo si se pasan fechas.
+
+        let allocationMap = new Map<string, number>()
+
+        if (filters?.startDate && filters?.endDate) {
+            // Find events overlapping with the requested range
+            const activeEvents = await prisma.event.findMany({
+                where: {
+                    status: { in: ['RESERVADO', 'DESPACHADO'] },
+                    OR: [
+                        {
+                            startDate: { lte: filters.endDate },
+                            endDate: { gte: filters.startDate },
+                        },
+                    ],
+                },
+                include: { items: true }
+            })
+
+            // Calculate allocated quantity per product
+            for (const event of activeEvents) {
+                for (const item of event.items) {
+                    const current = allocationMap.get(item.productId) || 0
+                    allocationMap.set(item.productId, current + item.quantity)
+                }
+            }
+        }
+
+        // Map products to include dynamic availability
+        const detailedProducts = products.map(product => {
+            const allocated = allocationMap.get(product.id) || 0
+            // @ts-ignore: quantityDamaged might be missing in type definition if schema not updated
+            const damaged = product.quantityDamaged || 0
+            const available = Math.max(0, product.totalQuantity - damaged - allocated)
+
+            return {
+                ...product,
+                quantityDamaged: damaged, // Ensure it's returned
+                availableQuantity: available,
+                allocatedQuantity: allocated
+            }
+        })
+
+        return { success: true, data: detailedProducts }
     } catch (error) {
         console.error('Error fetching products:', error)
         return { success: false, error: 'Error al obtener productos' }

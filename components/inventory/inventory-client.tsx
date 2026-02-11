@@ -35,6 +35,7 @@ interface Product {
     priceReplacement: number
     updatedAt: string | Date
     createdAt?: string | Date
+    availableQuantity?: number
 }
 
 import { useAuth } from '@/components/auth-provider'
@@ -191,7 +192,9 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                             </TableCell>
                                             <TableCell className="text-right font-bold text-muted-foreground">{product.totalQuantity}</TableCell>
                                             <TableCell className="text-right font-bold text-green-600">
-                                                {product.totalQuantity - (product.quantityDamaged || 0)}
+                                                {product.availableQuantity !== undefined
+                                                    ? product.availableQuantity
+                                                    : (product.totalQuantity - (product.quantityDamaged || 0))}
                                             </TableCell>
                                             <TableCell className="text-right font-bold text-red-600">
                                                 {product.quantityDamaged || 0}
