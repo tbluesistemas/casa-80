@@ -3,7 +3,7 @@
 
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "windows"]
 }
 
 datasource db {
@@ -47,6 +47,7 @@ model Event {
   status    String      @default("SIN_CONFIRMAR") // SIN_CONFIRMAR, RESERVADO, DESPACHADO, COMPLETADO, CANCELADO
   notes     String?
   items     EventItem[]
+  history   EventHistory[]
   clientId  String?
   client    Client?     @relation(fields: [clientId], references: [id])
   createdAt DateTime    @default(now())
@@ -96,4 +97,15 @@ model InventoryLog {
   verifiedBy  String?
   notes       String?
   createdAt   DateTime @default(now())
+}
+
+model EventHistory {
+  id             String   @id @default(cuid())
+  eventId        String
+  event          Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  previousStatus String?
+  newStatus      String
+  changedBy      String?  // User email or identifier
+  reason         String?  // Optional notes for the change
+  createdAt      DateTime @default(now())
 }

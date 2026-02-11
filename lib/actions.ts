@@ -144,6 +144,29 @@ export async function updateProduct(id: string, data: {
     if (role !== 'ADMIN') {
         return { success: false, error: 'No autorizado: Permisos insuficientes' }
     }
+
+    // Helper to log history
+    async function logEventStatusChange(
+        eventId: string,
+        newStatus: string,
+        previousStatus: string | null = null,
+        reason: string | null = null
+    ) {
+        const session = await auth()
+        try {
+            await prisma.eventHistory.create({
+                data: {
+                    eventId,
+                    previousStatus,
+                    newStatus,
+                    changedBy: session?.user?.email || 'Sistema',
+                    reason
+                }
+            })
+        } catch (error) {
+            console.error('Error logging history:', error)
+        }
+    }
     try {
         const product = await prisma.product.update({
             where: { id },
@@ -312,6 +335,20 @@ export async function updateEvent(id: string, data: {
                 }
             }
 
+            // Log status change if needed
+            if (updatedEvent.status !== currentEvent.status) {
+                const session = await auth()
+                await tx.eventHistory.create({
+                    data: {
+                        eventId: id,
+                        previousStatus: currentEvent.status,
+                        newStatus: updatedEvent.status,
+                        changedBy: session?.user?.email || 'Sistema',
+                        reason: 'Actualización de evento'
+                    }
+                })
+            }
+
             return updatedEvent
         })
 
@@ -382,6 +419,21 @@ export async function createEvent(data: {
                 }
             }
         })
+
+        // Log initial history
+        try {
+            const session = await auth()
+            await prisma.eventHistory.create({
+                data: {
+                    eventId: event.id,
+                    newStatus: 'RESERVADO',
+                    changedBy: session?.user?.email || 'Sistema',
+                    reason: 'Creación de reserva'
+                }
+            })
+        } catch (error) {
+            console.error('Error logging initial history:', error)
+        }
 
         // Email Notification (Fire and forget, don't block response)
         const sendEmailPromise = async () => {
@@ -562,9 +614,25 @@ export async function registerReturn(eventId: string, items: ReturnItem[]) {
         }
 
         // Update event status to COMPLETED
-        await prisma.event.update({
-            where: { id: eventId },
-            data: { status: 'COMPLETED' },
+        const event = await prisma.event.findUnique({ where: { id: eventId } })
+        const previousStatus = event?.status || 'DESPACHADO'
+
+        await prisma.$transaction(async (tx) => {
+            await tx.event.update({
+                where: { id: eventId },
+                data: { status: 'COMPLETED' },
+            })
+
+            const session = await auth()
+            await tx.eventHistory.create({
+                data: {
+                    eventId: eventId,
+                    previousStatus: previousStatus,
+                    newStatus: 'COMPLETADO',
+                    changedBy: session?.user?.email || 'Sistema',
+                    reason: 'Devolución procesada'
+                }
+            })
         })
 
         revalidatePath(`/events/${eventId}`)
@@ -601,6 +669,21 @@ export async function getEventById(id: string) {
     } catch (error) {
         console.error('Error fetching event:', error)
         return { success: false, error: error instanceof Error ? error.message : 'Error desconocido al obtener el evento' }
+    }
+}
+
+export async function getEventHistory(eventId?: string) {
+    try {
+        const whereClause = eventId ? { eventId } : {}
+        const history = await prisma.eventHistory.findMany({
+            where: whereClause,
+            orderBy: { createdAt: 'desc' },
+            include: { event: { select: { name: true } } }
+        })
+        return { success: true, data: history }
+    } catch (error) {
+        console.error('Error fetching event history:', error)
+        return { success: false, error: 'Error al obtener el historial' }
     }
 }
 
