@@ -16,7 +16,12 @@ import { useRouter } from "next/navigation";
 import { signOut as nextAuthSignOut } from "next-auth/react";
 import { useAuth } from "@/components/auth-provider";
 
-export function Sidebar() {
+interface SidebarProps {
+    onLinkClick?: () => void;
+    className?: string; // Allow passing custom classes (like w-full)
+}
+
+export function Sidebar({ onLinkClick, className }: SidebarProps) {
     const pathname = usePathname();
     const { role } = useAuth(); // Get current role
 
@@ -32,7 +37,7 @@ export function Sidebar() {
     }
 
     return (
-        <div className="flex h-full w-64 flex-col border-r bg-background">
+        <div className={cn("flex h-full w-64 flex-col border-r bg-background", className)}>
             <div className="flex h-16 items-center px-6 font-bold text-xl border-b">
                 Casa80
             </div>
@@ -45,6 +50,7 @@ export function Sidebar() {
                             <Link
                                 key={link.href}
                                 href={link.href}
+                                onClick={onLinkClick}
                                 className={cn(
                                     "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
                                     isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground"

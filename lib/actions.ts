@@ -56,12 +56,10 @@ async function checkAvailability(
         }
 
         // Check if requested quantity + used quantity exceeds total available (minus damaged)
-        // @ts-ignore: quantityDamaged exists in schema but type is stale
-        if (usedQuantity + item.quantity > (product.totalQuantity - (product as any).quantityDamaged)) {
+        if (usedQuantity + item.quantity > (product.totalQuantity - product.quantityDamaged)) {
             return {
                 success: false,
-                // @ts-ignore: quantityDamaged exists in schema but type is stale
-                error: `No hay suficiente stock para "${product.name}". Disponible: ${(product.totalQuantity - (product as any).quantityDamaged) - usedQuantity}, Solicitado: ${item.quantity} (Fuera de servicio: ${(product as any).quantityDamaged})`,
+                error: `No hay suficiente stock para "${product.name}". Disponible: ${(product.totalQuantity - product.quantityDamaged) - usedQuantity}, Solicitado: ${item.quantity} (Fuera de servicio: ${product.quantityDamaged})`,
             }
         }
     }
@@ -113,7 +111,6 @@ export async function getProducts(filters?: {
         // Map products to include dynamic availability
         const detailedProducts = products.map(product => {
             const allocated = allocationMap.get(product.id) || 0
-            // @ts-ignore: quantityDamaged might be missing in type definition if schema not updated
             const damaged = product.quantityDamaged || 0
             const available = Math.max(0, product.totalQuantity - damaged - allocated)
 
@@ -620,7 +617,7 @@ export async function registerReturn(eventId: string, items: ReturnItem[]) {
                         quantityDamaged: {
                             increment: item.returnedDamaged
                         }
-                    } as any
+                    }
                 })
             }
 
