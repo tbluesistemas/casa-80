@@ -1,11 +1,12 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { authenticate } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Eye, EyeOff } from 'lucide-react';
 
 function LoginButton() {
     const { pending } = useFormStatus();
@@ -19,6 +20,7 @@ function LoginButton() {
 
 export function LoginForm() {
     const [errorMessage, dispatch, isPending] = useActionState(authenticate, undefined);
+    const [showPassword, setShowPassword] = useState(false);
 
     return (
         <form action={dispatch} className="space-y-3">
@@ -45,14 +47,26 @@ export function LoginForm() {
                         </Label>
                         <div className="relative mt-1">
                             <Input
-                                className="peer block w-full rounded-md border border-gray-200 py-[9px] pl-10 text-sm outline-2 placeholder:text-gray-500"
+                                className="peer block w-full rounded-md border border-gray-200 py-[9px] pl-10 pr-10 text-sm outline-2 placeholder:text-gray-500"
                                 id="password"
-                                type="password"
+                                type={showPassword ? "text" : "password"}
                                 name="password"
                                 placeholder="Ingresa tu contraseña"
                                 required
                                 minLength={6}
                             />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                                aria-label={showPassword ? "Hide password" : "Show password"}
+                            >
+                                {showPassword ? (
+                                    <EyeOff className="h-4 w-4" />
+                                ) : (
+                                    <Eye className="h-4 w-4" />
+                                )}
+                            </button>
                         </div>
                     </div>
                 </div>
