@@ -24,6 +24,7 @@ interface EditProductDialogProps {
         category?: string | null
         description?: string | null
         totalQuantity: number
+        quantityDamaged: number
         priceUnit?: number
         priceReplacement: number
     }
@@ -37,6 +38,7 @@ export function EditProductDialog({ product }: EditProductDialogProps) {
         category: product.category || '',
         description: product.description || '',
         totalQuantity: product.totalQuantity,
+        quantityDamaged: product.quantityDamaged || 0,
         priceUnit: product.priceUnit || 0,
         priceReplacement: product.priceReplacement,
     })
@@ -50,6 +52,7 @@ export function EditProductDialog({ product }: EditProductDialogProps) {
             category: formData.category || null,
             description: formData.description || null,
             totalQuantity: formData.totalQuantity,
+            quantityDamaged: formData.quantityDamaged,
             priceUnit: formData.priceUnit,
             priceReplacement: formData.priceReplacement,
         })
@@ -137,6 +140,17 @@ export function EditProductDialog({ product }: EditProductDialogProps) {
                                     value={formData.priceReplacement === 0 ? '' : formData.priceReplacement}
                                     onChange={(e) => setFormData({ ...formData, priceReplacement: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
                                     placeholder="0.00"
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="quantityDamaged">Cant. Dañada</Label>
+                                <Input
+                                    id="quantityDamaged"
+                                    type="number"
+                                    min="0"
+                                    value={formData.quantityDamaged}
+                                    onChange={(e) => setFormData({ ...formData, quantityDamaged: e.target.value === '' ? 0 : parseInt(e.target.value) || 0 })}
+                                    placeholder="0"
                                 />
                             </div>
                         </div>

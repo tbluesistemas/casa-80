@@ -137,6 +137,7 @@ export async function updateProduct(id: string, data: {
     category?: string | null
     description?: string | null
     totalQuantity?: number
+    quantityDamaged?: number
     priceUnit?: number
     priceReplacement?: number
 }) {
@@ -336,7 +337,31 @@ export async function updateEvent(id: string, data: {
             }
 
             // Log status change if needed
+            // Log changes to history
+            const changes: string[] = []
+
             if (updatedEvent.status !== currentEvent.status) {
+                changes.push(`Estado: ${currentEvent.status} -> ${updatedEvent.status}`)
+            }
+            if (updatedEvent.startDate.getTime() !== currentEvent.startDate.getTime()) {
+                changes.push('Fecha inicio cambiada')
+            }
+            if (updatedEvent.endDate.getTime() !== currentEvent.endDate.getTime()) {
+                changes.push('Fecha fin cambiada')
+            }
+            if (updatedEvent.name !== currentEvent.name) {
+                changes.push('Nombre cambiado')
+            }
+            if (updatedEvent.notes !== currentEvent.notes) {
+                changes.push('Notas actualizadas')
+            }
+            if (data.items && data.items.length > 0) {
+                // Simple heuristic: if items are provided during update, assume change.
+                // Ideally we would compare content, but that's expensive.
+                changes.push('Inventario modificado')
+            }
+
+            if (changes.length > 0) {
                 const session = await auth()
                 await tx.eventHistory.create({
                     data: {
@@ -344,7 +369,7 @@ export async function updateEvent(id: string, data: {
                         previousStatus: currentEvent.status,
                         newStatus: updatedEvent.status,
                         changedBy: session?.user?.email || 'Sistema',
-                        reason: 'Actualización de evento'
+                        reason: changes.join(', ')
                     }
                 })
             }

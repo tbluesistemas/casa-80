@@ -89,7 +89,17 @@ export function EventsList({ events, role }: { events: Event[], role: UserRole }
                         <TableBody>
                             {activeEvents.map((event) => (
                                 <TableRow key={event.id}>
-                                    <TableCell className="font-medium">{event.name}</TableCell>
+                                    <TableCell className="font-medium">
+                                        {role === 'ADMIN' && ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'].includes(event.status) ? (
+                                            <Link href={`/events/${event.id}/edit`} className="hover:underline text-primary font-semibold">
+                                                {event.name}
+                                            </Link>
+                                        ) : (
+                                            <Link href={`/events/${event.id}`} className="hover:underline">
+                                                {event.name}
+                                            </Link>
+                                        )}
+                                    </TableCell>
                                     <TableCell className="whitespace-nowrap">{format(new Date(event.startDate), "PPP", { locale: es })}</TableCell>
                                     <TableCell className="whitespace-nowrap">{format(new Date(event.endDate), "PPP", { locale: es })}</TableCell>
                                     <TableCell>
@@ -164,8 +174,12 @@ export function EventsList({ events, role }: { events: Event[], role: UserRole }
                                         <TableCell>{entry.event.name}</TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-1 text-xs">
-                                                <span className="text-muted-foreground">{entry.previousStatus || 'N/A'}</span>
-                                                <span className="text-muted-foreground">→</span>
+                                                {entry.previousStatus && entry.previousStatus !== entry.newStatus && (
+                                                    <>
+                                                        <span className="text-muted-foreground">{entry.previousStatus}</span>
+                                                        <span className="text-muted-foreground">→</span>
+                                                    </>
+                                                )}
                                                 <EventStatusBadge status={entry.newStatus as EventStatus} />
                                             </div>
                                         </TableCell>
