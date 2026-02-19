@@ -12,9 +12,12 @@ import { useRouter } from 'next/navigation'
 type EventWithItems = {
     id: string
     name: string
+    status: string
     items: {
         productId: string
         quantity: number
+        returnedGood: number
+        returnedDamaged: number
         product: {
             name: string
             priceReplacement: number
@@ -24,13 +27,17 @@ type EventWithItems = {
 
 export function ReturnForm({ event }: { event: EventWithItems }) {
     const router = useRouter()
-    // Initial state: map items to default returnedGood (0) and damaged (0)
-    // Or pre-fill returnedGood with total quantity? Let's default to 0 to force check.
+
+    // Determine if we are editing an existing return or starting a new one
+    // If status is COMPLETADO, we assume we are editing -> load values from DB
+    // If not, we assume new return -> default to all good
+    const isEditing = event.status === 'COMPLETADO'
+
     const [items, setItems] = useState<ReturnItem[]>(
         event.items.map(item => ({
             productId: item.productId,
-            returnedGood: item.quantity, // Default to all good
-            returnedDamaged: 0
+            returnedGood: isEditing ? item.returnedGood : item.quantity,
+            returnedDamaged: isEditing ? item.returnedDamaged : 0
         }))
     )
     const [isSubmitting, setIsSubmitting] = useState(false)

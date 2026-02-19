@@ -592,10 +592,34 @@ export async function registerReturn(eventId: string, items: ReturnItem[]) {
     console.log(`[registerReturn] Starting for eventId: ${eventId}, items: ${items.length}`)
     try {
         let totalDamageCost = 0
+        let isUpdate = false
+
+        // Check if event is already completed to determine if this is an update
+        const existingEvent = await prisma.event.findUnique({
+            where: { id: eventId },
+            include: { items: true }
+        })
+
+        if (!existingEvent) {
+            return { success: false, error: 'Evento no encontrado' }
+        }
+
+        if (existingEvent.status === 'COMPLETADO') {
+            isUpdate = true
+        }
 
         // Update each item in the event
         for (const item of items) {
             console.log(`[registerReturn] Processing item: ${item.productId}, Good: ${item.returnedGood}, Damaged: ${item.returnedDamaged}`)
+
+            // Get current event item state to calculate diffs
+            const currentItem = existingEvent.items.find(i => i.productId === item.productId)
+
+            if (!currentItem) {
+                console.error(`[registerReturn] Item not found in event: ${item.productId}`)
+                continue
+            }
+
             // Get product for price info
             const product = await prisma.product.findUnique({
                 where: { id: item.productId },
@@ -606,16 +630,23 @@ export async function registerReturn(eventId: string, items: ReturnItem[]) {
                 continue
             }
 
-            // Calculate cost
+            const damageDiff = item.returnedDamaged - currentItem.returnedDamaged
+
+            // Calculate cost (using the NEW total damaged amount for display, or the diff? 
+            // The return-form shows total damage for the event. 
+            // But we want to return the TOTAL cost of this return. 
+            // If we are editing, maybe we should return the NEW total cost? Yes.
             if (item.returnedDamaged > 0) {
                 totalDamageCost += item.returnedDamaged * product.priceReplacement
+            }
 
-                // Increment quantityDamaged on the product (mark as Out of Service)
+            // Update product inventory if damage quantity changed
+            if (damageDiff !== 0) {
                 await prisma.product.update({
                     where: { id: item.productId },
                     data: {
                         quantityDamaged: {
-                            increment: item.returnedDamaged
+                            increment: damageDiff // Can be negative if correcting a mistake
                         }
                     }
                 })
@@ -635,27 +666,41 @@ export async function registerReturn(eventId: string, items: ReturnItem[]) {
             console.log(`[registerReturn] Update result for ${item.productId}: ${updateResult.count} records updated`)
         }
 
-        // Update event status to COMPLETED
-        const event = await prisma.event.findUnique({ where: { id: eventId } })
-        const previousStatus = event?.status || 'DESPACHADO'
+        // Update event status to COMPLETED if not already
+        // If it was already completed, we just stay completed.
+        const previousStatus = existingEvent.status
 
-        await prisma.$transaction(async (tx) => {
-            await tx.event.update({
-                where: { id: eventId },
-                data: { status: 'COMPLETED' },
+        if (previousStatus !== 'COMPLETADO') {
+            await prisma.$transaction(async (tx) => {
+                await tx.event.update({
+                    where: { id: eventId },
+                    data: { status: 'COMPLETADO' },
+                })
+
+                const session = await auth()
+                await tx.eventHistory.create({
+                    data: {
+                        eventId: eventId,
+                        previousStatus: previousStatus,
+                        newStatus: 'COMPLETADO',
+                        changedBy: session?.user?.email || 'Sistema',
+                        reason: 'Devolución procesada'
+                    }
+                })
             })
-
+        } else {
+            // Log edit
             const session = await auth()
-            await tx.eventHistory.create({
+            await prisma.eventHistory.create({
                 data: {
                     eventId: eventId,
-                    previousStatus: previousStatus,
+                    previousStatus: 'COMPLETADO',
                     newStatus: 'COMPLETADO',
                     changedBy: session?.user?.email || 'Sistema',
-                    reason: 'Devolución procesada'
+                    reason: 'Actualización de devolución'
                 }
             })
-        })
+        }
 
         revalidatePath(`/events/${eventId}`)
         revalidatePath('/events')
@@ -763,12 +808,14 @@ export async function getDashboardStats(filters?: {
                 name: true,
                 category: true,
                 totalQuantity: true,
+                quantityDamaged: true,
                 priceReplacement: true,
                 priceUnit: true
             }
         })
 
         const totalInventory = products.reduce((acc, curr) => acc + curr.totalQuantity, 0)
+        const totalDamagedQuantity = products.reduce((acc, curr) => acc + (curr.quantityDamaged || 0), 0)
         const inventoryValue = products.reduce((acc, curr) => acc + (curr.totalQuantity * curr.priceReplacement), 0)
 
         // Inventory by Category
@@ -1054,6 +1101,7 @@ export async function getDashboardStats(filters?: {
                 // Original stats
                 activeReservations,
                 totalInventory,
+                totalDamagedQuantity,
                 inventoryValue,
                 pendingReturns,
                 recentEvents,

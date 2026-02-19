@@ -12,6 +12,7 @@ interface DashboardStatsProps {
         // Original stats
         activeReservations: number
         totalInventory: number
+        totalDamagedQuantity?: number // New prop
         pendingReturns: number
         inventoryValue: number
         monthlyStats: Array<{ name: string; value: number; fill: string }>
@@ -73,6 +74,20 @@ export function DashboardStats({ data }: DashboardStatsProps) {
                             <div className="text-2xl font-bold">{data.totalInventory}</div>
                             <p className="text-xs text-muted-foreground">
                                 Items registrados
+                            </p>
+                        </CardContent>
+                    </Card>
+                </Link>
+                <Link href="/inventory" className="block text-inherit no-underline">
+                    <Card className="hover:bg-muted/50 transition-colors h-full border-orange-200 bg-orange-50/50">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium text-orange-900">Total Dañado</CardTitle>
+                            <AlertTriangle className="h-4 w-4 text-orange-600" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold text-orange-700">{data.totalDamagedQuantity || 0}</div>
+                            <p className="text-xs text-orange-600/80">
+                                Fuera de servicio
                             </p>
                         </CardContent>
                     </Card>

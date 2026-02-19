@@ -66,11 +66,11 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
                             </Button>
                         </Link>
                     )}
-                    {role === 'ADMIN' && !['COMPLETADO', 'CANCELADO'].includes(event.status) && (
+                    {role === 'ADMIN' && !['CANCELADO'].includes(event.status) && (
                         <Link href={`/events/${event.id}/return`}>
                             <Button>
                                 <RotateCcw className="mr-2 h-4 w-4" />
-                                Registrar Devolución
+                                Gestionar Devolución
                             </Button>
                         </Link>
                     )}
