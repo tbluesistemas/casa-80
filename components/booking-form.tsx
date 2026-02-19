@@ -11,11 +11,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { CalendarIcon, Minus, Plus, Search, ShoppingCart, Package, DollarSign, Loader2 } from 'lucide-react'
+import { CalendarIcon, Minus, Plus, Search, ShoppingCart, Package, DollarSign, Loader2, Printer, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { ClientSelector } from '@/components/client-selector'
 import { useAuth } from '@/components/auth-provider'
+import { useRouter } from 'next/navigation'
 
 type Product = {
     id: string
@@ -31,6 +32,7 @@ type CartItems = { [key: string]: number }
 
 export function BookingForm({ products: initialProducts }: { products: Product[] }) {
     const { role } = useAuth()
+    const router = useRouter()
 
     // Form State
     const [name, setName] = useState('')
@@ -39,6 +41,7 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
     const [endDate, setEndDate] = useState<Date>()
     const [isAllDay, setIsAllDay] = useState(false)
     const [notes, setNotes] = useState('')
+    const [deposit, setDeposit] = useState<string>('')
 
     // Product State
     const [availableProducts, setAvailableProducts] = useState<Product[]>(initialProducts)
@@ -170,10 +173,11 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
                 startDate,
                 endDate: finalEndDate!,
                 notes,
+                deposit: deposit ? parseFloat(deposit) : 0,
                 items,
             })
 
-            if (result.success) {
+            if (result.success && result.data) {
                 toast.success('Reserva creada exitosamente')
                 // Reset
                 setName('')
@@ -181,9 +185,17 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
                 setStartDate(undefined)
                 setEndDate(undefined)
                 setNotes('')
+                setDeposit('')
                 setCart({})
+                router.refresh()
+                // Redirect based on user choice
+                if (print) {
+                    router.push(`/events/${result.data.id}?print=true`)
+                } else {
+                    router.push('/events')
+                }
             } else {
-                toast.error(result.error)
+                toast.error(result.error || 'Error al crear el evento')
             }
         } catch (error) {
             toast.error('Error procesando la solicitud')
@@ -228,12 +240,6 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
                                     setName(client.name)
                                 }}
                             />
-                            {/* Hidden or secondary input if they strictly want a custom event name different from client? 
-                                For now, assume Event Name = Client Name based on user request "select client". 
-                                But user might want to edit it? 
-                                Actually, user said "select a client". 
-                                I'll keep the selector. If they want to just type random text, ClientSelector allows creating new ones.
-                            */}
                         </div>
 
                         {/* Dates */}
@@ -295,6 +301,24 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
                             />
                         </div>
 
+                        {/* Deposit (Optional) */}
+                        <div className="space-y-2">
+                            <Label>Depósito (Opcional)</Label>
+                            <div className="relative">
+                                <DollarSign className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    type="text"
+                                    placeholder="0"
+                                    className="pl-9"
+                                    value={deposit ? parseInt(deposit).toLocaleString('es-MX') : ''}
+                                    onChange={(e) => {
+                                        const val = e.target.value.replace(/[^0-9]/g, '')
+                                        setDeposit(val)
+                                    }}
+                                />
+                            </div>
+                        </div>
+
                         {/* Preview Section - Only for ADMIN */}
                         {role === 'ADMIN' && cartItems.length > 0 && (
                             <Card className="border-primary/20">
@@ -320,13 +344,20 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
                                             </div>
                                         ))}
                                     </div>
-                                    <div className="flex justify-between items-center pt-3 border-t-2 border-primary/20">
-                                        <div className="flex items-center gap-2 font-semibold text-lg">
-                                            <DollarSign className="h-5 w-5 text-primary" />
-                                            Total
+                                    <div className="pt-3 border-t-2 border-primary/20 space-y-1">
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span>Subtotal</span>
+                                            <span>${grandTotal.toLocaleString()}</span>
                                         </div>
-                                        <div className="text-2xl font-bold text-primary">
-                                            ${grandTotal.toLocaleString()}
+                                        {deposit && (
+                                            <div className="flex justify-between items-center text-sm text-green-600 font-medium">
+                                                <span>Depósito</span>
+                                                <span>-${parseInt(deposit).toLocaleString()}</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between items-center pt-2 font-bold text-lg text-primary">
+                                            <span>Total a Pagar</span>
+                                            <span>${(grandTotal - (deposit ? parseInt(deposit) : 0)).toLocaleString()}</span>
                                         </div>
                                     </div>
                                 </CardContent>
@@ -334,9 +365,29 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
                         )}
 
                         <div className="pt-4">
-                            <Button className="w-full h-12 text-lg" onClick={handleSubmit} disabled={isSubmitting}>
-                                {isSubmitting ? 'Guardando...' : `Confirmar Reserva (${totalItems} items)`}
-                            </Button>
+                            <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => handleSubmit(false)}
+                                    disabled={isSubmitting}
+                                    className="flex-1 md:flex-none"
+                                >
+                                    <Save className="mr-2 h-4 w-4" />
+                                    Solo Guardar
+                                </Button>
+                                <Button
+                                    onClick={() => handleSubmit(true)}
+                                    disabled={isSubmitting}
+                                    className="flex-1 md:flex-none"
+                                >
+                                    {isSubmitting ? (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <Printer className="mr-2 h-4 w-4" />
+                                    )}
+                                    Guardar e Imprimir
+                                </Button>
+                            </div>
                         </div>
                     </CardContent>
                 </Card>
@@ -450,7 +501,14 @@ function ProductCard({
         >
             <div className="space-y-1">
                 <h3 className="font-semibold leading-tight">{product.name}</h3>
-                <p className={cn("text-xs", stockColor)}>Disp: {stockDisplay}</p>
+                <div className="flex justify-between items-center text-xs">
+                    <p className={stockColor}>Disp: {stockDisplay}</p>
+                    {product.priceUnit !== undefined && (
+                        <p className="font-medium text-muted-foreground">
+                            ${product.priceUnit.toLocaleString()}
+                        </p>
+                    )}
+                </div>
             </div>
 
             <div className="mt-4 flex items-center justify-end">

@@ -46,6 +46,7 @@ model Event {
   endDate   DateTime
   status    String      @default("SIN_CONFIRMAR") // SIN_CONFIRMAR, RESERVADO, DESPACHADO, COMPLETADO, CANCELADO
   notes     String?
+  deposit   Float       @default(0.0)
   items     EventItem[]
   history   EventHistory[]
   clientId  String?

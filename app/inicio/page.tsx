@@ -40,13 +40,9 @@ export default function Home() {
     const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
-    // Load initial data with Current Month by default
+    // Load initial data (All Time default)
     useEffect(() => {
-        const now = new Date();
-        const currentMonth = now.getMonth() + 1; // 1-12
-        const year = now.getFullYear();
-
-        loadStats(year, currentMonth, true);
+        loadStats(undefined, undefined, true);
     }, []);
 
     const loadStats = async (year?: number | null, month?: number | null, isInitial: boolean = false) => {
@@ -85,11 +81,8 @@ export default function Home() {
     const handleClearFilters = () => {
         setSelectedYear(null);
         setSelectedMonth(null);
-        // When clearing, go back to Current Month default
-        const now = new Date();
-        const currentMonth = now.getMonth() + 1;
-        const year = now.getFullYear();
-        loadStats(year, currentMonth);
+        // When clearing, show All Time
+        loadStats();
     };
 
     const formatCurrency = (amount: number) => {

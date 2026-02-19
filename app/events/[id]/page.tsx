@@ -1,12 +1,32 @@
-import { getEventById } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { ArrowLeft, RotateCcw, Pencil } from "lucide-react";
+import { AutoPrint } from "@/components/events/auto-print";
+import {
+    ArrowLeft,
+    RotateCcw,
+    Pencil,
+    Calendar,
+    User,
+    Phone,
+    Mail,
+    MapPin,
+    FileText,
+    CreditCard,
+    DollarSign,
+    Box,
+    Clock,
+    CheckCircle2
+} from "lucide-react";
 import { getCurrentRole } from "@/lib/auth";
 import { EventStatusControl } from "@/components/events/event-status-control";
-import { EventStatus } from "@/lib/event-status";
+import { getEventById } from "@/lib/actions";
+import { PrintButton } from "@/components/events/print-button";
+import { EventStatus, EVENT_STATUS_LABELS } from "@/lib/event-status";
+import { cn } from "@/lib/utils";
 
 export default async function EventPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
@@ -15,49 +35,57 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
 
     if (!success || !event) {
         return (
-            <div className="p-8">
-                <div className="text-red-500 font-bold">Error: {error || "Evento no encontrado"}</div>
+            <div className="flex flex-col items-center justify-center p-8 min-h-[50vh]">
+                <div className="text-destructive font-bold text-lg mb-2">Error</div>
+                <p className="text-muted-foreground mb-4">{error || "Evento no encontrado"}</p>
                 <Link href="/events">
-                    <Button variant="outline" className="mt-4">
+                    <Button variant="outline">
                         <ArrowLeft className="mr-2 h-4 w-4" />
-                        Volver
+                        Volver al listado
                     </Button>
                 </Link>
             </div>
         );
     }
 
-    const formatDate = (date: Date) => {
-        return new Intl.DateTimeFormat('es-MX', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: 'numeric'
-        }).format(new Date(date));
+    const formatDateInfo = (date: Date) => {
+        return {
+            full: new Intl.DateTimeFormat('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(date)),
+            time: new Intl.DateTimeFormat('es-MX', { hour: 'numeric', minute: 'numeric', hour12: true }).format(new Date(date))
+        };
     }
 
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
     }
 
+    // Calculations
+    const subtotal = event.items.reduce((acc: number, item: any) => acc + (item.quantity * (item.product.priceUnit || 0)), 0);
+    const deposit = event.deposit || 0;
+    const total = subtotal - deposit;
+
+    const startDate = formatDateInfo(event.startDate);
+    const endDate = formatDateInfo(event.endDate);
+
     return (
-        <div className="flex-1 space-y-8 p-8 pt-6">
-            <div className="flex items-center justify-between">
+        <div className="flex-1 space-y-6 p-8 pt-6 max-w-7xl mx-auto print:p-0 print:pt-4 print:max-w-none">
+            {/* --- HEADER --- */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1">
-                    <h2 className="text-3xl font-bold tracking-tight">{event.name}</h2>
-                    <p className="text-muted-foreground">
-                        {formatDate(event.startDate)} - {formatDate(event.endDate)}
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-3xl font-bold tracking-tight print:text-xl">{event.name}</h2>
+                        <Badge variant="outline" className="text-sm px-3 py-1 hidden md:inline-flex print:inline-flex print:border-0 print:px-0">
+                            {event.id.slice(-6)}
+                        </Badge>
+                    </div>
+                    <p className="text-muted-foreground flex items-center gap-2">
+                        <Calendar className="h-4 w-4" />
+                        {startDate.full}
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
-                    <Link href="/events">
-                        <Button variant="outline">
-                            <ArrowLeft className="mr-2 h-4 w-4" />
-                            Volver
-                        </Button>
-                    </Link>
+                <div className="flex items-center gap-2 flex-wrap print:hidden">
+                    <PrintButton />
+
                     {role === 'ADMIN' && ['SIN_CONFIRMAR', 'RESERVADO'].includes(event.status) && (
                         <Link href={`/events/${event.id}/edit`}>
                             <Button variant="outline">
@@ -66,62 +94,261 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
                             </Button>
                         </Link>
                     )}
-                    {role === 'ADMIN' && !['CANCELADO'].includes(event.status) && (
+
+                    {role === 'ADMIN' && !['CANCELADO', 'SIN_CONFIRMAR'].includes(event.status) && (
                         <Link href={`/events/${event.id}/return`}>
-                            <Button>
+                            <Button variant="secondary">
                                 <RotateCcw className="mr-2 h-4 w-4" />
-                                Gestionar Devolución
+                                Devolución
                             </Button>
                         </Link>
                     )}
+
+                    <Link href="/events">
+                        <Button variant="outline">
+                            <ArrowLeft className="mr-2 h-4 w-4" />
+                            Volver
+                        </Button>
+                    </Link>
                 </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Estado</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">
-                            <EventStatusControl
-                                eventId={event.id}
-                                currentStatus={event.status as EventStatus}
-                            />
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
+            <Separator className="print:hidden" />
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Items del Evento</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Producto</TableHead>
-                                <TableHead className="text-right">Cantidad</TableHead>
-                                <TableHead className="text-right">Devuelto (Bien)</TableHead>
-                                <TableHead className="text-right">Dañado</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {event.items.map((item: any) => (
-                                <TableRow key={item.productId}>
-                                    <TableCell className="font-medium">{item.product.name}</TableCell>
-                                    <TableCell className="text-right">{item.quantity}</TableCell>
-                                    <TableCell className="text-right">{item.returnedGood}</TableCell>
-                                    <TableCell className="text-right text-red-500">
-                                        {item.returnedDamaged > 0 ? item.returnedDamaged : '-'}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </CardContent>
-            </Card>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 print:grid print:grid-cols-2 print:gap-x-8 print:gap-y-4 print:auto-rows-min">
+
+                {/* --- LEFT COLUMN (2/3) --- */}
+                <div className="md:col-span-2 space-y-6 print:contents">
+                    {/* ITEMS TABLE */}
+                    <Card className="overflow-hidden print:order-3 print:col-span-2 print:shadow-none print:border-0">
+                        <CardHeader className="bg-muted/30 pb-4 print:bg-transparent print:p-0 print:pb-2">
+                            <div className="flex items-center justify-between">
+                                <CardTitle className="text-lg flex items-center gap-2 print:text-sm">
+                                    <Box className="h-5 w-5 text-primary print:h-4 print:w-4" />
+                                    Detalle de Productos
+                                </CardTitle>
+                                <Badge variant="secondary" className="print:hidden">{event.items.length} items</Badge>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="bg-muted/10 print:bg-transparent print:border-b-black">
+                                        <TableHead className="w-[50%] print:text-black font-bold print:h-8 print:text-xs">Producto</TableHead>
+                                        <TableHead className="text-right print:text-black font-bold print:h-8 print:text-xs">Precio Unit.</TableHead>
+                                        <TableHead className="text-center print:text-black font-bold print:h-8 print:text-xs">Cant.</TableHead>
+                                        <TableHead className="text-right print:text-black font-bold print:h-8 print:text-xs">Total</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody className="print:text-xs">
+                                    {event.items.map((item: any) => (
+                                        <TableRow key={item.productId} className="group print:border-b-muted/50">
+                                            <TableCell className="font-medium print:py-1">
+                                                <div className="flex flex-col">
+                                                    <span>{item.product.name}</span>
+                                                    {(item.returnedDamaged > 0 || item.returnedGood > 0) && (
+                                                        <span className="text-xs text-muted-foreground flex gap-2 mt-1">
+                                                            {item.returnedGood > 0 && <span className="text-green-600">✓ {item.returnedGood} devueltos</span>}
+                                                            {item.returnedDamaged > 0 && <span className="text-destructive">⚠ {item.returnedDamaged} dañados</span>}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-right text-muted-foreground print:py-1">
+                                                {formatCurrency(item.product.priceUnit || 0)}
+                                            </TableCell>
+                                            <TableCell className="text-center font-semibold print:py-1">
+                                                {item.quantity}
+                                            </TableCell>
+                                            <TableCell className="text-right font-medium print:py-1">
+                                                {formatCurrency((item.product.priceUnit || 0) * item.quantity)}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+
+                    {/* FINANCIAL SUMMARY */}
+                    <Card className="print:order-4 print:shadow-none print:border-0">
+                        <CardContent className="p-6 print:p-0">
+                            <div className="flex flex-col items-end gap-2 text-sm print:text-xs">
+                                <div className="flex justify-between w-full md:w-1/2 lg:w-1/3 text-sm print:w-64">
+                                    <span className="text-muted-foreground print:text-black">Subtotal</span>
+                                    <span>{formatCurrency(subtotal)}</span>
+                                </div>
+                                {deposit > 0 && (
+                                    <div className="flex justify-between w-full md:w-1/2 lg:w-1/3 text-sm print:w-64">
+                                        <span className="text-muted-foreground print:text-black">Depósito / Anticipo</span>
+                                        <span className="text-green-600 font-medium print:text-black">-{formatCurrency(deposit)}</span>
+                                    </div>
+                                )}
+                                <Separator className="my-2 w-full md:w-1/2 lg:w-1/3 print:w-64 print:my-1" />
+                                <div className="flex justify-between w-full md:w-1/2 lg:w-1/3 text-lg font-bold print:w-64 print:text-base">
+                                    <span>Total a Pagar</span>
+                                    <span className="text-primary print:text-black">{formatCurrency(total)}</span>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* NOTES */}
+                    {event.notes && (
+                        <Card className="print:order-5 print:shadow-none print:border-0 print:mt-4">
+                            <CardHeader className="pb-3 md:pb-3 print:p-0 print:pb-1">
+                                <CardTitle className="text-base flex items-center gap-2 print:text-sm">
+                                    <FileText className="h-4 w-4" />
+                                    Notas
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="print:p-0">
+                                <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed bg-muted/30 p-4 rounded-md print:bg-transparent print:p-0 print:text-xs print:text-black">
+                                    {event.notes}
+                                </p>
+                            </CardContent>
+                        </Card>
+                    )}
+                </div>
+
+                {/* --- RIGHT COLUMN (1/3) --- */}
+                <div className="space-y-6 print:contents">
+
+                    {/* STATUS CARD (Hidden on print) */}
+                    <Card className="border-l-4 border-l-primary shadow-sm print:hidden">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">Estado Actual</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex items-center justify-between">
+                                <div className="scale-110 origin-left">
+                                    <EventStatusControl
+                                        eventId={event.id}
+                                        currentStatus={event.status as EventStatus}
+                                    />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* CLIENT INFO */}
+                    <Card className="print:order-1 print:shadow-none print:border-0">
+                        <CardHeader className="bg-muted/30 pb-3 print:bg-transparent print:p-0 print:pb-2">
+                            <CardTitle className="text-base flex items-center gap-2 print:text-sm">
+                                <User className="h-4 w-4" />
+                                Información del Cliente
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-4 space-y-4 print:p-0 print:space-y-1">
+                            {event.client ? (
+                                <>
+                                    <div className="space-y-1 print:space-y-0">
+                                        <p className="font-semibold text-lg print:text-sm">{event.client.name}</p>
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground print:text-xs print:text-black">
+                                            <CreditCard className="h-3 w-3" />
+                                            <span>{event.client.document || "Sin documento"}</span>
+                                        </div>
+                                    </div>
+                                    <Separator className="print:hidden" />
+                                    <div className="space-y-3 text-sm print:space-y-0 print:grid print:grid-cols-1 print:gap-0">
+                                        <div className="flex items-start gap-3 print:gap-2">
+                                            <Phone className="h-4 w-4 text-muted-foreground mt-0.5 print:h-3 print:w-3" />
+                                            <span className="print:text-xs">{event.client.phone || "Sin teléfono"}</span>
+                                        </div>
+                                        <div className="flex items-start gap-3 print:gap-2">
+                                            <Mail className="h-4 w-4 text-muted-foreground mt-0.5 print:h-3 print:w-3" />
+                                            <span className="break-all print:text-xs">{event.client.email || "Sin correo"}</span>
+                                        </div>
+                                        <div className="flex items-start gap-3 print:hidden">
+                                            <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                            <span>{event.client.address ? `${event.client.address}, ${event.client.city}` : "Sin dirección"}</span>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="text-sm text-muted-foreground italic">
+                                    Cliente no registrado.
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* DATES */}
+                    <Card className="print:order-2 print:shadow-none print:border-0">
+                        <CardHeader className="bg-muted/30 pb-3 print:bg-transparent print:p-0 print:pb-2">
+                            <CardTitle className="text-base flex items-center gap-2 print:text-sm">
+                                <Calendar className="h-4 w-4" />
+                                Fechas
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-4 space-y-4 print:p-0 print:space-y-2">
+                            <div className="relative pl-4 border-l-2 border-primary/20 space-y-1 print:border-0 print:pl-0">
+                                <div className="absolute -left-[5px] top-0 h-2.5 w-2.5 rounded-full bg-primary print:hidden" />
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider print:hidden">Inicio</p>
+                                <div className="flex flex-col print:flex-row print:gap-2">
+                                    <span className="text-xs font-bold w-12 hidden print:inline-block">INICIO:</span>
+                                    <p className="font-medium print:text-xs">{startDate.full} - {startDate.time}</p>
+                                </div>
+                            </div>
+                            <div className="relative pl-4 border-l-2 border-primary/20 space-y-1 print:border-0 print:pl-0">
+                                <div className="absolute -left-[5px] top-0 h-2.5 w-2.5 rounded-full bg-primary/30 print:hidden" />
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider print:hidden">Fin</p>
+                                <div className="flex flex-col print:flex-row print:gap-2">
+                                    <span className="text-xs font-bold w-12 hidden print:inline-block">FIN:</span>
+                                    <p className="font-medium print:text-xs">{endDate.full} - {endDate.time}</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* HISTORY TIMELINE */}
+                    <Card className="print:order-6 print:col-span-2 print:shadow-none print:border-0 print:break-before-auto print:mt-4 print:hidden">
+                        <CardHeader className="bg-muted/30 pb-3">
+                            <CardTitle className="text-base flex items-center gap-2">
+                                <Clock className="h-4 w-4" />
+                                Historial de Cambios
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-4">
+                            <div className="space-y-6 relative ml-2">
+                                {/* Vertical Line */}
+                                <div className="absolute left-0 top-2 bottom-2 w-px bg-border" />
+
+                                {event.history && event.history.length > 0 ? (
+                                    event.history.map((record: any, index: number) => (
+                                        <div key={record.id} className="relative pl-6">
+                                            {/* Dot */}
+                                            <div className={cn(
+                                                "absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full border border-background",
+                                                index === 0 ? "bg-primary" : "bg-muted-foreground/30"
+                                            )} />
+
+                                            <div className="flex flex-col gap-1">
+                                                <span className={cn(
+                                                    "text-sm font-medium leading-none",
+                                                    index === 0 && "text-primary"
+                                                )}>
+                                                    {EVENT_STATUS_LABELS[record.newStatus as keyof typeof EVENT_STATUS_LABELS] || record.newStatus}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground">
+                                                    {new Intl.DateTimeFormat('es-MX', {
+                                                        day: 'numeric', month: 'short', hour: 'numeric', minute: 'numeric'
+                                                    }).format(new Date(record.createdAt))}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="pl-6 text-sm text-muted-foreground italic">
+                                        Sin historial registrado.
+                                    </div>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+            <AutoPrint />
         </div>
     );
 }

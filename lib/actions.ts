@@ -394,9 +394,10 @@ export async function createEvent(data: {
     endDate: Date
     clientId?: string
     notes?: string
+    deposit?: number
     items: CreateEventItem[]
 }) {
-    const { name, startDate, endDate, items, clientId } = data
+    const { name, startDate, endDate, items, clientId, deposit } = data
 
     const role = await getCurrentRole()
     if (role !== 'ADMIN') {
@@ -427,6 +428,7 @@ export async function createEvent(data: {
                 endDate: data.endDate,
                 notes: data.notes,
                 clientId: clientId, // Optional link
+                deposit: deposit || 0,
                 status: 'RESERVADO', // Estado inicial: Reservado
                 items: {
                     create: data.items.map((item) => ({
@@ -728,7 +730,11 @@ export async function getEventById(id: string) {
     try {
         const event = await prisma.event.findUnique({
             where: { id },
-            include: { items: { include: { product: true } } },
+            include: {
+                items: { include: { product: true } },
+                client: true,
+                history: { orderBy: { createdAt: 'desc' } }
+            },
         })
         if (!event) return { success: false, error: 'Evento no encontrado' }
         return { success: true, data: event }
@@ -765,13 +771,23 @@ export async function getDashboardStats(filters?: {
 
         // Build date filter conditions
         let dateFilter: any = {}
+        let dateFilterByEndDate: any = {}
+
         if (filters?.year || filters?.month) {
             if (filters.year && filters.month) {
                 // Filter by specific month and year
                 const startOfMonth = new Date(filters.year, filters.month - 1, 1)
                 const endOfMonth = new Date(filters.year, filters.month, 0, 23, 59, 59, 999)
+
                 dateFilter = {
                     startDate: {
+                        gte: startOfMonth,
+                        lte: endOfMonth
+                    }
+                }
+
+                dateFilterByEndDate = {
+                    endDate: {
                         gte: startOfMonth,
                         lte: endOfMonth
                     }
@@ -780,20 +796,25 @@ export async function getDashboardStats(filters?: {
                 // Filter by year only
                 const startOfYear = new Date(filters.year, 0, 1)
                 const endOfYear = new Date(filters.year, 11, 31, 23, 59, 59, 999)
+
                 dateFilter = {
                     startDate: {
                         gte: startOfYear,
                         lte: endOfYear
                     }
                 }
-            } else if (filters.month) {
-                // Filter by month only (across all years)
-                // This is tricky - we need to filter by month number
-                // We'll handle this in the application logic after fetching
+
+                dateFilterByEndDate = {
+                    endDate: {
+                        gte: startOfYear,
+                        lte: endOfYear
+                    }
+                }
             }
         }
 
         // 1. Active Reservations (SIN_CONFIRMAR, RESERVADO, DESPACHADO)
+        // Keep using startDate/overlap logic or just startDate as before for consistency
         const activeReservations = await prisma.event.count({
             where: {
                 status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] },
@@ -828,15 +849,15 @@ export async function getDashboardStats(filters?: {
         const rCategoryStats = Object.entries(categoryStats).map(([name, value]) => ({ name, value }))
 
         // 3. Pending Returns (EndDate passed + Not Completed)
+        // Uses endDate so it makes sense to filter by endDate frame too
         const pendingReturns = await prisma.event.count({
             where: {
                 endDate: { lte: now },
-                status: { not: 'COMPLETADO' },
-                ...dateFilter
+                status: { notIn: ['COMPLETADO', 'COMPLETED'] },
+                ...dateFilterByEndDate
             }
         })
 
-        // 4. Upcoming Events
         // 4. Upcoming Events (Next 5 active events from today)
         const recentEvents = await prisma.event.findMany({
             take: 5,
@@ -849,7 +870,7 @@ export async function getDashboardStats(filters?: {
             }
         })
 
-        // 5. Monthly Event Stats
+        // 5. Monthly Event Stats (Based on Start Date as before)
         // Adjust range based on filters
         let statsStartDate: Date
         let monthsToShow = 6
@@ -900,11 +921,11 @@ export async function getDashboardStats(filters?: {
                 fill: `var(--chart-${(index % 5) + 1})`
             }))
 
-        // 6. Revenue Statistics
+        // 6. Revenue Statistics (Based on Completed Date / End Date)
         const completedEvents = await prisma.event.findMany({
             where: {
-                status: 'COMPLETED',
-                ...dateFilter
+                status: { in: ['COMPLETADO', 'COMPLETED'] },
+                ...dateFilterByEndDate
             },
             include: {
                 items: {
@@ -927,7 +948,7 @@ export async function getDashboardStats(filters?: {
             })
         })
 
-        // Projected revenue from active/booked events
+        // Projected revenue from active/booked events (Still use startDate or overlap? Stick to startDate for now as they are future/current)
         const activeEvents = await prisma.event.findMany({
             where: {
                 status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] },
@@ -947,7 +968,7 @@ export async function getDashboardStats(filters?: {
             })
         })
 
-        // Monthly Revenue
+        // Monthly Revenue (Based on End Date)
         const monthlyRevenueMap = new Map<string, number>()
         for (let i = 0; i < monthsToShow; i++) {
             const d = new Date(statsStartDate)
@@ -956,11 +977,14 @@ export async function getDashboardStats(filters?: {
             monthlyRevenueMap.set(key, 0)
         }
 
+        // Need to query completed events by EndDate for the chart range
+        // Note: statsStartDate was calculated for StartDate charts (last 6 months or specific year/month).
+        // It's probably safe to use the same frame for EndDate.
         const completedEventsInRange = await prisma.event.findMany({
             where: {
-                status: 'COMPLETED',
-                startDate: { gte: statsStartDate },
-                ...dateFilter
+                status: { in: ['COMPLETADO', 'COMPLETED'] },
+                endDate: { gte: statsStartDate },
+                ...dateFilterByEndDate
             },
             include: {
                 items: {
@@ -970,7 +994,8 @@ export async function getDashboardStats(filters?: {
         })
 
         completedEventsInRange.forEach(event => {
-            const key = event.startDate.toLocaleString('es-MX', { month: 'short', year: filters?.year ? undefined : 'numeric' })
+            // Group by EndDate
+            const key = event.endDate.toLocaleString('es-MX', { month: 'short', year: filters?.year ? undefined : 'numeric' })
             if (monthlyRevenueMap.has(key)) {
                 const revenue = event.items.reduce((acc, item) => {
                     return acc + (item.quantity * item.product.priceUnit) + (item.returnedDamaged * item.product.priceReplacement)
@@ -1001,7 +1026,9 @@ export async function getDashboardStats(filters?: {
         })
         const activeClients = activeClientsData.length
 
-        // Top 5 clients by event count (filtered by date)
+        // Top 5 clients by event count (filtered by date - maybe stick to startDate for "Booking activity"?)
+        // Or if we want "Revenue generating clients", use endDate. 
+        // Let's stick to startDate for Client Activity as it reflects when they *engaged* us.
         const allClientsWithEvents = await prisma.client.findMany({
             include: {
                 events: {
@@ -1077,17 +1104,20 @@ export async function getDashboardStats(filters?: {
         const utilizationRate = totalInventory > 0 ? (totalInUse / totalInventory) * 100 : 0
 
         // 9. Event Statistics
+        // Completed -> use endDate
         const completedEventsCount = await prisma.event.count({
             where: {
-                status: 'COMPLETED',
-                ...dateFilter
+                status: { in: ['COMPLETADO', 'COMPLETED'] },
+                ...dateFilterByEndDate
             }
         })
 
+        // Cancelled -> use endDate (as the date if it was supposed to happen) or startDate? 
+        // Let's use endDate to be consistent with "Finalized".
         const cancelledEvents = await prisma.event.count({
             where: {
                 status: 'CANCELLED',
-                ...dateFilter
+                ...dateFilterByEndDate
             }
         })
 

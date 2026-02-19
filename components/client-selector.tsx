@@ -159,91 +159,88 @@ export function ClientSelector({ onSelect, selectedClient }: ClientSelectorProps
 
     return (
         <>
-            <Popover open={open} onOpenChange={setOpen}>
-                <PopoverTrigger asChild>
-                    <div className="relative w-full">
-                        <Input
-                            placeholder="Buscar por Nombre, CC, Correo o Teléfono..."
-                            value={selectedClient ? selectedClient.name : query}
-                            onChange={(e) => {
-                                setQuery(e.target.value)
-                                if (selectedClient) onSelect(null as any) // Clear selection if typing
-                                setOpen(true)
-                            }}
-                            onClick={() => setOpen(true)}
-                            className={cn(
-                                "w-full pr-10 truncate",
-                                selectedClient && "font-medium"
-                            )}
-                        />
-                        <div className="absolute right-3 top-2.5 text-muted-foreground">
-                            {loading ? (
-                                <span className="text-xs animate-pulse">...</span>
-                            ) : (
-                                <ChevronsUpDown className="h-4 w-4 opacity-50" />
-                            )}
+            <div className="flex w-full gap-2">
+                <Popover open={open} onOpenChange={setOpen}>
+                    <PopoverTrigger asChild>
+                        <div className="relative w-full flex-1">
+                            <Input
+                                placeholder="Buscar por Nombre, CC, Correo o Teléfono..."
+                                value={selectedClient ? selectedClient.name : query}
+                                onChange={(e) => {
+                                    setQuery(e.target.value)
+                                    if (selectedClient) onSelect(null as any) // Clear selection if typing
+                                    setOpen(true)
+                                }}
+                                onClick={() => setOpen(true)}
+                                className={cn(
+                                    "w-full pr-10 truncate",
+                                    selectedClient && "font-medium"
+                                )}
+                            />
+                            <div className="absolute right-3 top-2.5 text-muted-foreground">
+                                {loading ? (
+                                    <span className="text-xs animate-pulse">...</span>
+                                ) : (
+                                    <ChevronsUpDown className="h-4 w-4 opacity-50" />
+                                )}
+                            </div>
                         </div>
-                    </div>
-                </PopoverTrigger>
-                <PopoverContent className="w-[400px] p-0" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
-                    <div className="p-2 gap-2 flex flex-col">
-                        <div className="flex flex-col gap-1 max-h-[300px] overflow-y-auto">
-                            {!loading && (
-                                <>
-                                    {clients.map((client) => (
-                                        <div
-                                            key={client.id}
-                                            className={cn(
-                                                "flex flex-col px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors border border-transparent hover:border-border",
-                                                selectedClient?.id === client.id && "bg-accent text-accent-foreground border-border"
-                                            )}
-                                            onClick={() => {
-                                                onSelect(client)
-                                                setQuery('')
-                                                setOpen(false)
-                                            }}
-                                        >
-                                            <div className="flex items-center justify-between">
-                                                <span className="font-semibold">{client.name}</span>
-                                                {selectedClient?.id === client.id && <Check className="h-4 w-4 text-primary" />}
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[400px] p-0" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
+                        <div className="p-2 gap-2 flex flex-col">
+                            <div className="flex flex-col gap-1 max-h-[300px] overflow-y-auto">
+                                {!loading && (
+                                    <>
+                                        {clients.map((client) => (
+                                            <div
+                                                key={client.id}
+                                                className={cn(
+                                                    "flex flex-col px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors border border-transparent hover:border-border",
+                                                    selectedClient?.id === client.id && "bg-accent text-accent-foreground border-border"
+                                                )}
+                                                onClick={() => {
+                                                    onSelect(client)
+                                                    setQuery('')
+                                                    setOpen(false)
+                                                }}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span className="font-semibold">{client.name}</span>
+                                                    {selectedClient?.id === client.id && <Check className="h-4 w-4 text-primary" />}
+                                                </div>
+                                                <div className="text-xs text-muted-foreground flex gap-3 mt-1">
+                                                    {client.document && <span>🆔 {maskDocument(client.document, role)}</span>}
+                                                    {client.phone && <span>📞 {maskPhone(client.phone, role)}</span>}
+                                                    {client.city && <span>📍 {client.city}</span>}
+                                                </div>
+                                                {client.email && <div className="text-xs text-muted-foreground mt-0.5">📧 {maskEmail(client.email, role)}</div>}
                                             </div>
-                                            <div className="text-xs text-muted-foreground flex gap-3 mt-1">
-                                                {client.document && <span>🆔 {maskDocument(client.document, role)}</span>}
-                                                {client.phone && <span>📞 {maskPhone(client.phone, role)}</span>}
-                                                {client.city && <span>📍 {client.city}</span>}
+                                        ))}
+
+                                        {clients.length === 0 && query.trim().length > 0 && (
+                                            <div className="text-xs text-center p-2 text-muted-foreground">
+                                                No se encontraron coincidencias.
                                             </div>
-                                            {client.email && <div className="text-xs text-muted-foreground mt-0.5">📧 {maskEmail(client.email, role)}</div>}
-                                        </div>
-                                    ))}
-
-                                    {clients.length > 0 && <div className="h-px bg-border my-1" />}
-
-
-                                    {clients.length > 0 && <div className="h-px bg-border my-1" />}
-
-                                    {role === 'ADMIN' && (
-                                        <Button
-                                            size="sm"
-                                            variant={clients.length === 0 ? "default" : "secondary"}
-                                            className="w-full justify-start mt-1"
-                                            onClick={handleCreateClick}
-                                        >
-                                            <UserPlus className="mr-2 h-4 w-4" />
-                                            {query.trim().length > 0 ? `Crear nuevo "${query}"` : "Crear nuevo cliente"}
-                                        </Button>
-                                    )}
-
-                                    {clients.length === 0 && query.trim().length > 0 && (
-                                        <div className="text-xs text-center p-2 text-muted-foreground">
-                                            No se encontraron coincidencias.
-                                        </div>
-                                    )}
-                                </>
-                            )}
+                                        )}
+                                    </>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                </PopoverContent>
-            </Popover>
+                    </PopoverContent>
+                </Popover>
+
+                {role === 'ADMIN' && (
+                    <Button
+                        size="icon"
+                        variant="soft"
+                        className="shrink-0 border"
+                        onClick={handleCreateClick}
+                        title={query.trim().length > 0 ? `Crear nuevo: ${query}` : "Crear nuevo cliente"}
+                    >
+                        <UserPlus className="h-4 w-4" />
+                    </Button>
+                )}
+            </div>
 
             <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
                 <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">

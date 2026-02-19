@@ -134,7 +134,7 @@ export function DateFilters({
                 {!hasFilters && (
                     <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                            ℹ️ Mostrando datos del último mes por defecto
+                            ℹ️ Mostrando historial completo
                         </span>
                     </div>
                 )}
