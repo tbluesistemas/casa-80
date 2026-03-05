@@ -333,7 +333,7 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                     <TableHead className="text-right w-[110px]">Valor Unit.</TableHead>
                                     <TableHead className="text-right w-[100px]">Valor Daño</TableHead>
                                     <TableHead className="text-right w-[130px]">Actualización</TableHead>
-                                    <TableHead className="w-[100px]"></TableHead>
+                                    <TableHead className="w-[90px] shrink-0"></TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -430,8 +430,8 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                                 <TableCell className="text-right text-muted-foreground text-xs">
                                                     {format(new Date(product.updatedAt), "dd/MM/yyyy HH:mm")}
                                                 </TableCell>
-                                                <TableCell>
-                                                    <div className="flex items-center gap-1">
+                                                <TableCell className="shrink-0">
+                                                    <div className="flex items-center gap-1 flex-nowrap">
                                                         {role === 'ADMIN' && <DeleteProductDialog productId={product.id} productName={product.name} />}
                                                         <HistoryDialog
                                                             productId={product.id}

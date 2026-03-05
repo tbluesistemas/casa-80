@@ -38,7 +38,7 @@ export function HistoryDialog({ productId, productName }: HistoryDialogProps) {
     return (
         <Dialog open={open} onOpenChange={handleOpen}>
             <DialogTrigger asChild>
-                <Button variant="ghost" size="icon" title="Ver Historial">
+                <Button variant="ghost" size="icon" className="h-8 w-8" title="Ver Historial">
                     <History className="h-4 w-4" />
                 </Button>
             </DialogTrigger>
