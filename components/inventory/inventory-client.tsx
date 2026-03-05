@@ -312,7 +312,7 @@ export function InventoryClient({ products }: { products: Product[] }) {
                     </div>
 
                     {/* Desktop: Table */}
-                    <div className="hidden md:block overflow-x-auto px-6">
+                    <div className="hidden md:block px-6">
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -332,8 +332,8 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                     <TableHead className="text-right w-[70px] text-red-600">Dañado</TableHead>
                                     <TableHead className="text-right w-[110px]">Valor Unit.</TableHead>
                                     <TableHead className="text-right w-[100px]">Valor Daño</TableHead>
-                                    <TableHead className="text-right w-[130px]">Actualización</TableHead>
-                                    <TableHead className="w-[90px] shrink-0"></TableHead>
+                                    <TableHead className="text-right w-[120px]">Actualización</TableHead>
+                                    <TableHead className="w-[76px] sticky right-0 bg-background z-10"></TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -430,7 +430,7 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                                 <TableCell className="text-right text-muted-foreground text-xs">
                                                     {format(new Date(product.updatedAt), "dd/MM/yyyy HH:mm")}
                                                 </TableCell>
-                                                <TableCell className="shrink-0">
+                                                <TableCell className="sticky right-0 bg-background">
                                                     <div className="flex items-center gap-1 flex-nowrap">
                                                         {role === 'ADMIN' && <DeleteProductDialog productId={product.id} productName={product.name} />}
                                                         <HistoryDialog
