@@ -49,6 +49,8 @@ export function exportInventoryToExcel(products: any[]) {
         ) || 0
 
         return {
+            'ID Interno': product.id,
+            'Código': product.code || '',
             'Producto': product.name,
             'Categoría': product.category || 'Sin categoría',
             'Cantidad Total': product.totalQuantity,
@@ -65,6 +67,8 @@ export function exportInventoryToExcel(products: any[]) {
     XLSX.utils.book_append_sheet(wb, ws, 'Inventario')
 
     const colWidths = [
+        { wch: 35 }, // ID Interno
+        { wch: 15 }, // Código
         { wch: 30 }, // Producto
         { wch: 20 }, // Categoría
         { wch: 15 }, // Cantidad Total

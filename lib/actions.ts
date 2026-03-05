@@ -139,6 +139,7 @@ export async function updateProduct(id: string, data: {
     quantityDamaged?: number
     priceUnit?: number
     priceReplacement?: number
+    imageUrl?: string | null
 }) {
     const role = await getCurrentRole()
     if (role !== 'ADMIN') {
@@ -189,6 +190,7 @@ export async function createProduct(data: {
     totalQuantity?: number
     priceUnit?: number
     priceReplacement?: number
+    imageUrl?: string | null
 }) {
     const role = await getCurrentRole()
     if (role !== 'ADMIN') {
@@ -205,6 +207,7 @@ export async function createProduct(data: {
                 totalQuantity: data.totalQuantity || 0,
                 priceUnit: data.priceUnit || 0,
                 priceReplacement: data.priceReplacement || 0,
+                imageUrl: data.imageUrl || null,
             }
         })
         revalidatePath('/inventory')
@@ -1560,12 +1563,14 @@ export async function getDamagedProductsForExport(filters?: {
 // ==================== Import Actions ====================
 
 export async function importInventoryFromExcel(products: {
+    id?: string
     name: string
     category?: string
     subcategory?: string
     novedad?: string
     description?: string
     totalQuantity: number
+    quantityDamaged?: number
     priceUnit: number
     priceReplacement: number
 }[]) {
@@ -1583,42 +1588,37 @@ export async function importInventoryFromExcel(products: {
 
         for (const productData of products) {
             try {
-                // Buscar si el producto ya existe por nombre
-                const existing = await prisma.product.findFirst({
-                    where: {
-                        name: {
-                            equals: productData.name
-                            // mode: 'insensitive' // Not supported in default SQLite Prisma
-                        }
-                    }
-                })
+                let existing = null;
+
+                if (productData.id && productData.id.trim() !== '') {
+                    existing = await prisma.product.findUnique({ where: { id: productData.id } })
+                }
+
+                if (!existing && productData.name) {
+                    existing = await prisma.product.findFirst({ where: { name: productData.name } })
+                }
+
+                const dataToSave = {
+                    name: productData.name || 'Sin nombre',
+                    category: productData.category || null,
+                    subcategory: productData.subcategory || null,
+                    novedad: productData.novedad || null,
+                    description: productData.description || null,
+                    totalQuantity: productData.totalQuantity || 0,
+                    quantityDamaged: productData.quantityDamaged || 0,
+                    priceUnit: productData.priceUnit || 0,
+                    priceReplacement: productData.priceReplacement || 0,
+                };
 
                 if (existing) {
                     await prisma.product.update({
                         where: { id: existing.id },
-                        data: {
-                            category: productData.category,
-                            subcategory: productData.subcategory || null,
-                            novedad: productData.novedad || null,
-                            description: productData.description,
-                            totalQuantity: productData.totalQuantity,
-                            priceUnit: productData.priceUnit,
-                            priceReplacement: productData.priceReplacement,
-                        }
+                        data: dataToSave
                     })
                     results.updated++
                 } else {
                     await prisma.product.create({
-                        data: {
-                            name: productData.name,
-                            category: productData.category,
-                            subcategory: productData.subcategory || null,
-                            novedad: productData.novedad || null,
-                            description: productData.description,
-                            totalQuantity: productData.totalQuantity,
-                            priceUnit: productData.priceUnit,
-                            priceReplacement: productData.priceReplacement,
-                        }
+                        data: dataToSave
                     })
                     results.created++
                 }
@@ -1630,7 +1630,6 @@ export async function importInventoryFromExcel(products: {
 
         revalidatePath('/inventory')
 
-        // ... existing code ...
         return {
             success: true,
             data: results,

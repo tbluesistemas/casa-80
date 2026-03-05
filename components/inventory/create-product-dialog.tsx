@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Plus } from "lucide-react"
 import { toast } from "sonner"
+import { ImageUpload } from './image-upload'
 
 export function CreateProductDialog() {
     const [open, setOpen] = useState(false)
@@ -29,6 +30,7 @@ export function CreateProductDialog() {
         totalQuantity: 0,
         priceUnit: 0,
         priceReplacement: 0,
+        imageUrl: null as string | null,
     })
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -50,6 +52,7 @@ export function CreateProductDialog() {
             totalQuantity: formData.totalQuantity,
             priceUnit: formData.priceUnit,
             priceReplacement: formData.priceReplacement,
+            imageUrl: formData.imageUrl,
         })
 
         if (result.success) {
@@ -64,6 +67,7 @@ export function CreateProductDialog() {
                 totalQuantity: 0,
                 priceUnit: 0,
                 priceReplacement: 0,
+                imageUrl: null,
             })
         } else {
             toast.error(result.error)
@@ -85,34 +89,45 @@ export function CreateProductDialog() {
                 </DialogHeader>
                 <form onSubmit={handleSubmit}>
                     <div className="grid gap-4 py-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="name">Nombre *</Label>
-                            <Input
-                                id="name"
-                                value={formData.name}
-                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                required
-                                placeholder="Ej: Mesa redonda"
-                            />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="grid gap-2">
-                                <Label htmlFor="category">Categoría</Label>
-                                <Input
-                                    id="category"
-                                    value={formData.category}
-                                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                                    placeholder="Ej: Mobiliario"
+                        <div className="flex flex-col md:flex-row gap-6 items-start">
+                            <div className="flex flex-col items-center space-y-2 shrink-0">
+                                <Label>Imagen de Referencia</Label>
+                                <ImageUpload
+                                    value={formData.imageUrl}
+                                    onChange={(url) => setFormData({ ...formData, imageUrl: url })}
                                 />
                             </div>
-                            <div className="grid gap-2">
-                                <Label htmlFor="subcategory">Subcategoría</Label>
-                                <Input
-                                    id="subcategory"
-                                    value={formData.subcategory}
-                                    onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
-                                    placeholder="Ej: Sillas"
-                                />
+                            <div className="flex-1 space-y-4 w-full">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="name">Nombre *</Label>
+                                    <Input
+                                        id="name"
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                        required
+                                        placeholder="Ej: Mesa redonda"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="category">Categoría</Label>
+                                        <Input
+                                            id="category"
+                                            value={formData.category}
+                                            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                            placeholder="Ej: Mobiliario"
+                                        />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="subcategory">Subcategoría</Label>
+                                        <Input
+                                            id="subcategory"
+                                            value={formData.subcategory}
+                                            onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
+                                            placeholder="Ej: Sillas"
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div className="grid gap-2">

@@ -21,15 +21,17 @@ import { ProductDetailsDialog } from "@/components/product-details-dialog"
 import { EditProductDialog } from "@/components/inventory/edit-product-dialog"
 import { CreateProductDialog } from "@/components/inventory/create-product-dialog"
 import { DeleteProductDialog } from "@/components/inventory/delete-product-dialog"
+import Image from 'next/image'
 import { deleteProduct } from "@/lib/actions"
 import { format } from "date-fns"
 import { cn, formatCurrency } from "@/lib/utils"
-import { Search, Eye, EyeOff, DollarSign, AlertTriangle, Trash2, X, ArrowUpDown } from "lucide-react"
+import { Search, Eye, EyeOff, DollarSign, AlertTriangle, Trash2, X, ArrowUpDown, ImageIcon } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 
 interface Product {
     id: string
+    code?: string | null
     name: string
     category?: string | null
     subcategory?: string | null
@@ -42,6 +44,7 @@ interface Product {
     updatedAt: string | Date
     createdAt?: string | Date
     availableQuantity?: number
+    imageUrl?: string | null
 }
 
 import { useAuth } from '@/components/auth-provider'
@@ -325,8 +328,10 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                             data-state={indeterminate ? 'indeterminate' : allFilteredSelected ? 'checked' : 'unchecked'}
                                         />
                                     </TableHead>
-                                    <TableHead className="w-[160px] max-w-[160px]">Categoría</TableHead>
-                                    <TableHead className="min-w-[200px]">Nombre / Descripción</TableHead>
+                                    <TableHead className="w-[60px]">Foto</TableHead>
+                                    <TableHead className="w-[100px]">Código</TableHead>
+                                    <TableHead className="w-[140px] max-w-[140px]">Categoría</TableHead>
+                                    <TableHead className="min-w-[180px]">Nombre / Descripción</TableHead>
                                     <TableHead className="text-right w-[70px]">Total</TableHead>
                                     <TableHead className="text-right w-[80px]">Disponible</TableHead>
                                     <TableHead className="text-right w-[70px] text-red-600">Dañado</TableHead>
@@ -339,7 +344,7 @@ export function InventoryClient({ products }: { products: Product[] }) {
                             <TableBody>
                                 {visibleProducts.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={10} className="text-center h-24 text-muted-foreground">
+                                        <TableCell colSpan={11} className="text-center h-24 text-muted-foreground">
                                             {searchQuery || categoryFilter !== 'all'
                                                 ? 'No se encontraron productos con esos filtros.'
                                                 : 'No hay productos registrados.'}
@@ -361,6 +366,31 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                                         aria-label={`Seleccionar ${product.name}`}
                                                     />
                                                 </TableCell>
+                                                <TableCell className="py-2">
+                                                    {product.imageUrl ? (
+                                                        <div className="relative h-10 w-10 rounded-md overflow-hidden border bg-muted">
+                                                            <Image
+                                                                src={product.imageUrl}
+                                                                alt={product.name}
+                                                                fill
+                                                                className="object-cover"
+                                                                sizes="40px"
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="h-10 w-10 rounded-md border bg-muted flex items-center justify-center">
+                                                            <ImageIcon className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-primary" />
+                                                        </div>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="w-[100px]">
+                                                    {product.code ? (
+                                                        <span className="font-mono text-xs text-muted-foreground">{product.code}</span>
+                                                    ) : (
+                                                        <span className="text-muted-foreground/50 text-xs italic">-</span>
+                                                    )}
+                                                </TableCell>
+
                                                 <TableCell className="w-[160px] max-w-[160px]">
                                                     <div className="flex flex-col gap-1 max-w-full">
                                                         <span

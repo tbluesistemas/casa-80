@@ -5,6 +5,7 @@ export function generateInventoryTemplate() {
     // Datos de ejemplo para la plantilla
     const templateData = [
         {
+            'Código': 'SILL-TIF-B',
             'Producto': 'Silla Tiffany Blanca',
             'Categoría': 'Mobiliario',
             'Subcategoría': 'Sillas',
@@ -15,6 +16,7 @@ export function generateInventoryTemplate() {
             'Precio Reemplazo': 150.00
         },
         {
+            'Código': 'MES-REC-8',
             'Producto': 'Mesa Rectangular 8 personas',
             'Categoría': 'Mobiliario',
             'Subcategoría': 'Mesas',
@@ -25,6 +27,7 @@ export function generateInventoryTemplate() {
             'Precio Reemplazo': 800.00
         },
         {
+            'Código': '',
             'Producto': '',
             'Categoría': '',
             'Subcategoría': '',
@@ -42,6 +45,7 @@ export function generateInventoryTemplate() {
 
     // Configurar ancho de columnas
     const colWidths = [
+        { wch: 15 }, // Código
         { wch: 35 }, // Producto
         { wch: 20 }, // Categoría
         { wch: 20 }, // Subcategoría
@@ -65,6 +69,7 @@ export function generateInventoryTemplate() {
         { 'INSTRUCCIONES PARA IMPORTAR INVENTARIO': '   - Precio Reemplazo (Precio de daño)' },
         { 'INSTRUCCIONES PARA IMPORTAR INVENTARIO': '' },
         { 'INSTRUCCIONES PARA IMPORTAR INVENTARIO': '4. Campos OPCIONALES:' },
+        { 'INSTRUCCIONES PARA IMPORTAR INVENTARIO': '   - Código/SKU (para actualizar fácilmente o identificar rápido)' },
         { 'INSTRUCCIONES PARA IMPORTAR INVENTARIO': '   - Categoría (ej: Mobiliario, Decoración)' },
         { 'INSTRUCCIONES PARA IMPORTAR INVENTARIO': '   - Subcategoría (ej: Sillas, Mesas, Lounge)' },
         { 'INSTRUCCIONES PARA IMPORTAR INVENTARIO': '   - Novedad (ej: Nuevo, Renovado, Descontinuado)' },
@@ -85,12 +90,15 @@ export function generateInventoryTemplate() {
 }
 
 export interface ImportedProduct {
+    id?: string
+    code?: string
     name: string
     category?: string
     subcategory?: string
     novedad?: string
     description?: string
     totalQuantity: number
+    quantityDamaged?: number
     priceUnit: number
     priceReplacement: number
 }
@@ -187,8 +195,11 @@ export function parseInventoryExcel(file: File): Promise<ImportResult> {
 
                     // Crear objeto de producto
                     const product: ImportedProduct = {
+                        id: getValue(['ID Interno', 'ID'])?.toString().trim() || undefined,
+                        code: getValue(['Código', 'Codigo', 'SKU'])?.toString().trim() || undefined,
                         name,
                         totalQuantity,
+                        quantityDamaged: parseNumber(getValue(['Cantidad Dañada', 'Dañado'])),
                         priceUnit,
                         priceReplacement,
                         category: getValue(['Categoría', 'Categoria'])?.toString().trim() || undefined,

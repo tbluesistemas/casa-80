@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import { ClientSelector } from '@/components/client-selector'
 import { useAuth } from '@/components/auth-provider'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 
 type Product = {
     id: string
@@ -25,6 +26,7 @@ type Product = {
     priceUnit?: number
     description?: string | null
     availableQuantity?: number
+    imageUrl?: string | null
 }
 
 // Internal type for easier state management
@@ -562,6 +564,16 @@ function ProductCard({
             )}
             onClick={() => !showControls && stockDisplay > 0 && onUpdate(product.id, 1)}
         >
+            {product.imageUrl && (
+                <div className="relative w-full aspect-square mb-2 rounded-md overflow-hidden bg-muted">
+                    <Image
+                        src={product.imageUrl}
+                        alt={product.name}
+                        fill
+                        className="object-cover"
+                    />
+                </div>
+            )}
             <div className="space-y-1">
                 <h3 className="font-semibold leading-tight">{product.name}</h3>
                 <div className="flex justify-between items-center text-xs">
