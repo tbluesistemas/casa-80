@@ -140,6 +140,7 @@ export async function updateProduct(id: string, data: {
     priceUnit?: number
     priceReplacement?: number
     imageUrl?: string | null
+    code?: string | null
 }) {
     const role = await getCurrentRole()
     if (role !== 'ADMIN') {
@@ -191,6 +192,7 @@ export async function createProduct(data: {
     priceUnit?: number
     priceReplacement?: number
     imageUrl?: string | null
+    code?: string
 }) {
     const role = await getCurrentRole()
     if (role !== 'ADMIN') {
@@ -205,9 +207,9 @@ export async function createProduct(data: {
                 novedad: data.novedad || null,
                 description: data.description || null,
                 totalQuantity: data.totalQuantity || 0,
-                priceUnit: data.priceUnit || 0,
                 priceReplacement: data.priceReplacement || 0,
                 imageUrl: data.imageUrl || null,
+                code: data.code || null,
             }
         })
         revalidatePath('/inventory')
@@ -1573,6 +1575,7 @@ export async function importInventoryFromExcel(products: {
     quantityDamaged?: number
     priceUnit: number
     priceReplacement: number
+    code?: string
 }[]) {
     try {
         const session = await auth()
@@ -1605,9 +1608,9 @@ export async function importInventoryFromExcel(products: {
                     novedad: productData.novedad || null,
                     description: productData.description || null,
                     totalQuantity: productData.totalQuantity || 0,
-                    quantityDamaged: productData.quantityDamaged || 0,
                     priceUnit: productData.priceUnit || 0,
                     priceReplacement: productData.priceReplacement || 0,
+                    code: productData.code || null,
                 };
 
                 if (existing) {
