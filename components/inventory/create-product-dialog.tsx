@@ -142,6 +142,7 @@ export function CreateProductDialog() {
                                 </div>
                             </div>
                         </div>
+
                         <div className="grid gap-2">
                             <Label htmlFor="novedad">Novedad</Label>
                             <Input
@@ -209,6 +210,6 @@ export function CreateProductDialog() {
                     </DialogFooter>
                 </form>
             </DialogContent>
-        </Dialog >
+        </Dialog>
     )
 }

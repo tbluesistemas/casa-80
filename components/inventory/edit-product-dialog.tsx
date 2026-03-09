@@ -144,6 +144,7 @@ export function EditProductDialog({ product, children }: EditProductDialogProps)
                                 </div>
                             </div>
                         </div>
+
                         <div className="grid gap-2">
                             <Label htmlFor="novedad">Novedad</Label>
                             <Input
@@ -221,6 +222,6 @@ export function EditProductDialog({ product, children }: EditProductDialogProps)
                     </DialogFooter>
                 </form>
             </DialogContent>
-        </Dialog >
+        </Dialog>
     )
 }
