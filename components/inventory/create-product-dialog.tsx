@@ -101,107 +101,114 @@ export function CreateProductDialog() {
                                 />
                             </div>
                             <div className="flex-1 space-y-4 w-full">
-                                placeholder="Ej: Mesa redonda"
+                                <div className="grid gap-2">
+                                    <Label htmlFor="name">Nombre *</Label>
+                                    <Input
+                                        id="name"
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                        required
+                                        placeholder="Ej: Mesa redonda"
                                     />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="code">Código / SKU</Label>
+                                    <Input
+                                        id="code"
+                                        value={formData.code}
+                                        onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                                        placeholder="Ej: MES-RED-01"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="category">Categoría</Label>
+                                        <Input
+                                            id="category"
+                                            value={formData.category}
+                                            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                            placeholder="Ej: Mobiliario"
+                                        />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="subcategory">Subcategoría</Label>
+                                        <Input
+                                            id="subcategory"
+                                            value={formData.subcategory}
+                                            onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
+                                            placeholder="Ej: Sillas"
+                                        />
+                                    </div>
+                                </div>
                             </div>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="novedad">Novedad</Label>
+                            <Input
+                                id="novedad"
+                                value={formData.novedad}
+                                onChange={(e) => setFormData({ ...formData, novedad: e.target.value })}
+                                placeholder="Ej: Nuevo, Renovado..."
+                            />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="description">Descripción</Label>
+                            <Textarea
+                                id="description"
+                                value={formData.description}
+                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                rows={3}
+                                placeholder="Descripción del producto..."
+                            />
+                        </div>
+                        <div className="grid grid-cols-3 gap-4">
                             <div className="grid gap-2">
-                                <Label htmlFor="code">Código / SKU</Label>
+                                <Label htmlFor="quantity">Cantidad</Label>
                                 <Input
-                                    id="code"
-                                    value={formData.code}
-                                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                                    placeholder="Ej: MES-RED-01"
+                                    id="quantity"
+                                    type="number"
+                                    min="0"
+                                    value={formData.totalQuantity === 0 ? '' : formData.totalQuantity}
+                                    onChange={(e) => setFormData({ ...formData, totalQuantity: e.target.value === '' ? 0 : parseInt(e.target.value) || 0 })}
+                                    placeholder="0"
                                 />
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="grid gap-2">
-                                    <Label htmlFor="category">Categoría</Label>
-                                    <Input
-                                        id="category"
-                                        value={formData.category}
-                                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                                        placeholder="Ej: Mobiliario"
-                                    />
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="subcategory">Subcategoría</Label>
-                                    <Input
-                                        id="subcategory"
-                                        value={formData.subcategory}
-                                        onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
-                                        placeholder="Ej: Sillas"
-                                    />
-                                </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="priceUnit">Valor Unit.</Label>
+                                <Input
+                                    id="priceUnit"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={formData.priceUnit === 0 ? '' : formData.priceUnit}
+                                    onChange={(e) => setFormData({ ...formData, priceUnit: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
+                                    placeholder="0.00"
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="priceReplacement">Valor Daño</Label>
+                                <Input
+                                    id="priceReplacement"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={formData.priceReplacement === 0 ? '' : formData.priceReplacement}
+                                    onChange={(e) => setFormData({ ...formData, priceReplacement: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
+                                    placeholder="0.00"
+                                />
                             </div>
                         </div>
                     </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="novedad">Novedad</Label>
-                        <Input
-                            id="novedad"
-                            value={formData.novedad}
-                            onChange={(e) => setFormData({ ...formData, novedad: e.target.value })}
-                            placeholder="Ej: Nuevo, Renovado..."
-                        />
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="description">Descripción</Label>
-                        <Textarea
-                            id="description"
-                            value={formData.description}
-                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                            rows={3}
-                            placeholder="Descripción del producto..."
-                        />
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="quantity">Cantidad</Label>
-                            <Input
-                                id="quantity"
-                                type="number"
-                                min="0"
-                                value={formData.totalQuantity === 0 ? '' : formData.totalQuantity}
-                                onChange={(e) => setFormData({ ...formData, totalQuantity: e.target.value === '' ? 0 : parseInt(e.target.value) || 0 })}
-                                placeholder="0"
-                            />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="priceUnit">Valor Unit.</Label>
-                            <Input
-                                id="priceUnit"
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={formData.priceUnit === 0 ? '' : formData.priceUnit}
-                                onChange={(e) => setFormData({ ...formData, priceUnit: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
-                                placeholder="0.00"
-                            />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="priceReplacement">Valor Daño</Label>
-                            <Input
-                                id="priceReplacement"
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={formData.priceReplacement === 0 ? '' : formData.priceReplacement}
-                                onChange={(e) => setFormData({ ...formData, priceReplacement: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
-                                placeholder="0.00"
-                            />
-                        </div>
-                    </div>
-                </div>
-                <DialogFooter>
-                    <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                        Cancelar
-                    </Button>
-                    <Button type="submit" disabled={loading}>
-                        {loading ? 'Creando...' : 'Crear Producto'}
-                    </Button>
-                </DialogFooter>
-            </form>
-        </DialogContent>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                            Cancelar
+                        </Button>
+                        <Button type="submit" disabled={loading}>
+                            {loading ? 'Creando...' : 'Crear Producto'}
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
         </Dialog >
     )
 }
