@@ -470,6 +470,6 @@ export function DashboardStats({ data }: DashboardStatsProps) {
                     </Card>
                 )
             }
-        </div >
+        </div>
     )
 }
