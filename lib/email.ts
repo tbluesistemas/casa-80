@@ -82,9 +82,12 @@ export async function sendReservationEmail(
         })
 
         console.log('Email sent: %s', info.messageId)
-        // Preview only available when using Ethereal account
-        if (nodemailer.getTestMessageUrl(info)) {
-            console.log('Preview URL: %s', nodemailer.getTestMessageUrl(info))
+        // Preview only available when using Ethereal account (nodemailer v6)
+        const previewUrl = typeof nodemailer.getTestMessageUrl === 'function'
+            ? nodemailer.getTestMessageUrl(info)
+            : null
+        if (previewUrl) {
+            console.log('Preview URL: %s', previewUrl)
         }
         return { success: true }
     } catch (error) {
