@@ -10,6 +10,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Package, DollarSign, Archive, AlertTriangle } from "lucide-react"
 import { format } from "date-fns"
+import Image from "next/image"
 
 interface ProductDetailsProps {
     product: {
@@ -17,6 +18,7 @@ interface ProductDetailsProps {
         name: string
         description?: string | null
         category?: string | null
+        imageUrl?: string | null
         totalQuantity: number
         quantityDamaged?: number
         priceUnit?: number
@@ -40,9 +42,20 @@ export function ProductDetailsDialog({ product, children }: ProductDetailsProps)
                     </DialogTitle>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
-                    <div className="flex justify-center py-4 bg-muted/20 rounded-lg border border-dashed">
-                        <Package className="h-16 w-16 text-muted-foreground/50" />
-                    </div>
+                    {product.imageUrl ? (
+                        <div className="relative w-full aspect-square rounded-lg overflow-hidden border bg-muted">
+                            <Image 
+                                src={product.imageUrl} 
+                                alt={product.name} 
+                                fill 
+                                className="object-cover"
+                            />
+                        </div>
+                    ) : (
+                        <div className="flex justify-center py-4 bg-muted/20 rounded-lg border border-dashed">
+                            <Package className="h-16 w-16 text-muted-foreground/50" />
+                        </div>
+                    )}
 
                     {product.description && (
                         <div className="text-sm text-muted-foreground">

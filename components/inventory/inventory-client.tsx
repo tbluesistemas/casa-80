@@ -271,6 +271,17 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                             checked={selectedIds.has(product.id)}
                                             onCheckedChange={() => toggleSelect(product.id)}
                                         />
+                                            {product.imageUrl && (
+                                                <div className="relative h-16 w-16 min-w-[4rem] rounded-md overflow-hidden border bg-muted shrink-0 mr-3">
+                                                    <Image
+                                                        src={product.imageUrl}
+                                                        alt={product.name}
+                                                        fill
+                                                        className="object-cover"
+                                                        sizes="64px"
+                                                    />
+                                                </div>
+                                            )}
                                         <div className="min-w-0 flex-1">
                                             {role === 'ADMIN' ? (
                                                 <EditProductDialog product={product}>
@@ -328,7 +339,7 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                             data-state={indeterminate ? 'indeterminate' : allFilteredSelected ? 'checked' : 'unchecked'}
                                         />
                                     </TableHead>
-                                    <TableHead className="w-[60px]">Foto</TableHead>
+                                    <TableHead className="w-[120px]">Foto</TableHead>
                                     <TableHead className="w-[100px]">Código</TableHead>
                                     <TableHead className="w-[140px] max-w-[140px]">Categoría</TableHead>
                                     <TableHead className="min-w-[180px]">Nombre / Descripción</TableHead>
@@ -368,18 +379,18 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                                 </TableCell>
                                                 <TableCell className="py-2">
                                                     {product.imageUrl ? (
-                                                        <div className="relative h-10 w-10 rounded-md overflow-hidden border bg-muted">
+                                                        <div className="relative h-24 w-24 rounded-md overflow-hidden border bg-muted shadow-sm hover:scale-150 transition-transform origin-left z-20 cursor-zoom-in">
                                                             <Image
                                                                 src={product.imageUrl}
                                                                 alt={product.name}
                                                                 fill
                                                                 className="object-cover"
-                                                                sizes="40px"
+                                                                sizes="96px"
                                                             />
                                                         </div>
                                                     ) : (
-                                                        <div className="h-10 w-10 rounded-md border bg-muted flex items-center justify-center">
-                                                            <ImageIcon className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-primary" />
+                                                        <div className="h-24 w-24 rounded-md border bg-muted flex items-center justify-center">
+                                                            <ImageIcon className="h-8 w-8 text-muted-foreground/50 transition-colors group-hover:text-primary" />
                                                         </div>
                                                     )}
                                                 </TableCell>
