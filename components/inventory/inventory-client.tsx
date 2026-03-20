@@ -257,69 +257,77 @@ export function InventoryClient({ products }: { products: Product[] }) {
                     </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                    {/* Mobile: Cards */}
-                    <div className="md:hidden divide-y">
+                    {/* Mobile: Grid Cards */}
+                    <div className="md:hidden p-3 grid grid-cols-2 gap-3 bg-muted/10">
                         {visibleProducts.length === 0 ? (
-                            <p className="text-center text-muted-foreground py-12">
+                            <div className="col-span-2 text-center text-muted-foreground py-12">
                                 {searchQuery || categoryFilter !== 'all' ? 'No se encontraron productos con esos filtros.' : 'No hay productos registrados.'}
-                            </p>
+                            </div>
                         ) : visibleProducts.map((product) => (
-                            <div key={product.id} className="p-4 space-y-2">
-                                <div className="flex items-start justify-between gap-2">
-                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                        <Checkbox
-                                            checked={selectedIds.has(product.id)}
-                                            onCheckedChange={() => toggleSelect(product.id)}
-                                        />
-                                            {product.imageUrl && (
-                                                <div className="relative h-16 w-16 min-w-[4rem] rounded-md overflow-hidden border bg-muted shrink-0 mr-3">
-                                                    <Image
-                                                        src={product.imageUrl}
-                                                        alt={product.name}
-                                                        fill
-                                                        className="object-cover"
-                                                        sizes="64px"
-                                                    />
-                                                </div>
-                                            )}
-                                        <div className="min-w-0 flex-1">
-                                            {role === 'ADMIN' ? (
-                                                <EditProductDialog product={product}>
-                                                    <span className="font-semibold text-primary text-sm hover:underline cursor-pointer block truncate">{product.name}</span>
-                                                </EditProductDialog>
-                                            ) : (
-                                                <ProductDetailsDialog product={product}>
-                                                    <span className="font-semibold text-sm hover:underline cursor-pointer block truncate">{product.name}</span>
-                                                </ProductDetailsDialog>
-                                            )}
-                                            {product.category && (
-                                                <span className="text-xs text-muted-foreground">{product.category}{product.subcategory ? ` · ${product.subcategory}` : ''}</span>
-                                            )}
+                            <div key={product.id} className="relative flex flex-col rounded-xl border bg-card shadow-sm overflow-hidden transition-all hover:shadow-md">
+                                <div className="absolute top-2 left-2 z-10">
+                                    <Checkbox
+                                        checked={selectedIds.has(product.id)}
+                                        onCheckedChange={() => toggleSelect(product.id)}
+                                        className="bg-background shadow-sm data-[state=checked]:bg-primary"
+                                    />
+                                </div>
+                                <div className="absolute top-2 right-2 z-10">
+                                    {role === 'ADMIN' && <DeleteProductDialog productId={product.id} productName={product.name} />}
+                                </div>
+                                
+                                {product.imageUrl ? (
+                                    <ProductDetailsDialog product={product}>
+                                        <div className="relative w-full aspect-square bg-muted border-b cursor-pointer transition-opacity hover:opacity-90">
+                                            <Image
+                                                src={product.imageUrl}
+                                                alt={product.name}
+                                                fill
+                                                className="object-cover"
+                                                sizes="(max-width: 768px) 50vw, 33vw"
+                                            />
+                                        </div>
+                                    </ProductDetailsDialog>
+                                ) : (
+                                    <ProductDetailsDialog product={product}>
+                                        <div className="relative w-full aspect-square bg-muted/50 border-b flex items-center justify-center cursor-pointer hover:bg-muted/70">
+                                            <ImageIcon className="h-10 w-10 text-muted-foreground/30" />
+                                        </div>
+                                    </ProductDetailsDialog>
+                                )}
+                                
+                                <div className="p-3 flex flex-col flex-1 gap-2">
+                                    <div>
+                                        {role === 'ADMIN' ? (
+                                            <EditProductDialog product={product}>
+                                                <span className="font-semibold text-primary text-sm hover:underline cursor-pointer line-clamp-2 leading-tight">{product.name}</span>
+                                            </EditProductDialog>
+                                        ) : (
+                                            <ProductDetailsDialog product={product}>
+                                                <span className="font-semibold text-sm hover:underline cursor-pointer line-clamp-2 leading-tight">{product.name}</span>
+                                            </ProductDetailsDialog>
+                                        )}
+                                        {product.category && (
+                                            <span className="text-[10px] text-muted-foreground block truncate mt-0.5">{product.category}{product.subcategory ? ` · ${product.subcategory}` : ''}</span>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="mt-auto pt-2 grid grid-cols-2 gap-1 text-center text-[10px] uppercase font-bold tracking-wider">
+                                        <div className="bg-blue-50 text-blue-700 rounded-md p-1.5 flex flex-col">
+                                            <span className="text-sm">{product.totalQuantity}</span>
+                                            <span>Total</span>
+                                        </div>
+                                        <div className="bg-green-50 text-green-700 rounded-md p-1.5 flex flex-col">
+                                            <span className="text-sm">
+                                                {product.availableQuantity !== undefined ? product.availableQuantity : (product.totalQuantity - (product.quantityDamaged || 0))}
+                                            </span>
+                                            <span>Disp</span>
                                         </div>
                                     </div>
-                                    <div className="flex gap-1 shrink-0">
-                                        {role === 'ADMIN' && <DeleteProductDialog productId={product.id} productName={product.name} />}
+                                    <div className="flex items-center justify-between mt-1 text-xs">
+                                        <span className="font-medium text-muted-foreground">Unit:</span>
+                                        <strong className="text-foreground">{formatCurrency(product.priceUnit || 0)}</strong>
                                     </div>
-                                </div>
-                                <div className="grid grid-cols-3 gap-2 text-center text-xs bg-muted/30 rounded-lg p-2">
-                                    <div>
-                                        <div className="font-bold text-base">{product.totalQuantity}</div>
-                                        <div className="text-muted-foreground">Total</div>
-                                    </div>
-                                    <div>
-                                        <div className="font-bold text-base text-green-600">
-                                            {product.availableQuantity !== undefined ? product.availableQuantity : (product.totalQuantity - (product.quantityDamaged || 0))}
-                                        </div>
-                                        <div className="text-muted-foreground">Disponible</div>
-                                    </div>
-                                    <div>
-                                        <div className="font-bold text-base text-red-600">{product.quantityDamaged || 0}</div>
-                                        <div className="text-muted-foreground">Dañado</div>
-                                    </div>
-                                </div>
-                                <div className="flex justify-between text-xs text-muted-foreground">
-                                    <span>Unit: <strong className="text-foreground">{formatCurrency(product.priceUnit || 0)}</strong></span>
-                                    <span>Daño: <strong className="text-foreground">{formatCurrency(product.priceReplacement)}</strong></span>
                                 </div>
                             </div>
                         ))}
@@ -339,7 +347,7 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                             data-state={indeterminate ? 'indeterminate' : allFilteredSelected ? 'checked' : 'unchecked'}
                                         />
                                     </TableHead>
-                                    <TableHead className="w-[120px]">Foto</TableHead>
+                                    <TableHead className="w-[160px]">Foto</TableHead>
                                     <TableHead className="w-[100px]">Código</TableHead>
                                     <TableHead className="w-[140px] max-w-[140px]">Categoría</TableHead>
                                     <TableHead className="min-w-[180px]">Nombre / Descripción</TableHead>
@@ -377,22 +385,24 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                                         aria-label={`Seleccionar ${product.name}`}
                                                     />
                                                 </TableCell>
-                                                <TableCell className="py-2">
-                                                    {product.imageUrl ? (
-                                                        <div className="relative h-24 w-24 rounded-md overflow-hidden border bg-muted shadow-sm hover:scale-150 transition-transform origin-left z-20 cursor-zoom-in">
-                                                            <Image
-                                                                src={product.imageUrl}
-                                                                alt={product.name}
-                                                                fill
-                                                                className="object-cover"
-                                                                sizes="96px"
-                                                            />
-                                                        </div>
-                                                    ) : (
-                                                        <div className="h-24 w-24 rounded-md border bg-muted flex items-center justify-center">
-                                                            <ImageIcon className="h-8 w-8 text-muted-foreground/50 transition-colors group-hover:text-primary" />
-                                                        </div>
-                                                    )}
+                                                <TableCell className="py-4">
+                                                    <ProductDetailsDialog product={product}>
+                                                        {product.imageUrl ? (
+                                                            <div className="relative h-36 w-36 rounded-xl overflow-hidden border-2 bg-muted shadow hover:scale-105 transition-transform origin-left z-20 cursor-pointer">
+                                                                <Image
+                                                                    src={product.imageUrl}
+                                                                    alt={product.name}
+                                                                    fill
+                                                                    className="object-cover"
+                                                                    sizes="144px"
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            <div className="h-36 w-36 rounded-xl border-2 bg-muted flex items-center justify-center cursor-pointer hover:bg-muted/80">
+                                                                <ImageIcon className="h-10 w-10 text-muted-foreground/50 transition-colors group-hover:text-primary" />
+                                                            </div>
+                                                        )}
+                                                    </ProductDetailsDialog>
                                                 </TableCell>
                                                 <TableCell className="w-[100px]">
                                                     {product.code ? (

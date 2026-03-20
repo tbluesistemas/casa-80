@@ -18,6 +18,7 @@ import { ClientSelector } from '@/components/client-selector'
 import { useAuth } from '@/components/auth-provider'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import { ProductDetailsDialog } from "@/components/product-details-dialog"
 
 type Product = {
     id: string
@@ -27,6 +28,11 @@ type Product = {
     description?: string | null
     availableQuantity?: number
     imageUrl?: string | null
+    category?: string | null
+    subcategory?: string | null
+    novedad?: string | null
+    priceReplacement: number
+    quantityDamaged?: number
 }
 
 // Internal type for easier state management
@@ -491,7 +497,7 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
                             No se encontraron productos
                         </div>
                     ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
                             {filteredProducts.map(product => (
                                 <ProductCard
                                     key={product.id}
@@ -565,13 +571,17 @@ function ProductCard({
             onClick={() => !showControls && stockDisplay > 0 && onUpdate(product.id, 1)}
         >
             {product.imageUrl && (
-                <div className="relative w-full aspect-square mb-2 rounded-md overflow-hidden bg-muted">
-                    <Image
-                        src={product.imageUrl}
-                        alt={product.name}
-                        fill
-                        className="object-cover"
-                    />
+                <div className="relative w-full aspect-square mb-2 rounded-md overflow-hidden bg-muted" onClick={(e) => e.stopPropagation()}>
+                    <ProductDetailsDialog product={product}>
+                        <div className="relative w-full h-full cursor-pointer hover:opacity-90 transition-opacity">
+                            <Image
+                                src={product.imageUrl}
+                                alt={product.name}
+                                fill
+                                className="object-cover"
+                            />
+                        </div>
+                    </ProductDetailsDialog>
                 </div>
             )}
             <div className="space-y-1">
