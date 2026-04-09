@@ -39,7 +39,7 @@ export function DeleteProductDialog({ productId, productName }: DeleteProductDia
             } else {
                 toast.error(result.error || "Error al eliminar el producto")
             }
-        } catch (error) {
+        } catch {
             toast.error("Ocurrió un error inesperado")
         } finally {
             setIsDeleting(false)
@@ -59,7 +59,7 @@ export function DeleteProductDialog({ productId, productName }: DeleteProductDia
                     <AlertDialogTitle>¿Está seguro?</AlertDialogTitle>
                     <AlertDialogDescription>
                         Esta acción no se puede deshacer. Esto eliminará permanentemente el producto
-                        <strong> "{productName}"</strong> del inventario.
+                        <strong> &quot;{productName}&quot;</strong> del inventario.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

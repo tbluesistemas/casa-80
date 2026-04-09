@@ -1,7 +1,7 @@
 'use server'
 
 import { prisma } from '@/lib/prisma'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, unstable_cache } from 'next/cache'
 import { sendReservationEmail } from '@/lib/email'
 import { getCurrentRole, UserRole } from '@/lib/auth'
 import { signIn, auth } from '@/auth'
@@ -30,32 +30,38 @@ async function checkAvailability(
         whereClause.id = { not: excludeEventId }
     }
 
-    const overlappingEvents = await prisma.event.findMany({
-        where: whereClause,
-        include: {
-            items: true,
-        },
-    })
+    // Fetch overlapping events and all needed products in parallel (eliminates N+1)
+    const productIds = items.map(i => i.productId)
+    const [overlappingEvents, productsData] = await Promise.all([
+        prisma.event.findMany({
+            where: whereClause,
+            include: { items: { where: { productId: { in: productIds } } } },
+        }),
+        prisma.product.findMany({
+            where: { id: { in: productIds } },
+            select: { id: true, name: true, totalQuantity: true, quantityDamaged: true },
+        }),
+    ])
+
+    const productMap = new Map(productsData.map(p => [p.id, p]))
+
+    // Pre-compute used quantity per product from overlapping events
+    const usedQtyMap = new Map<string, number>()
+    for (const event of overlappingEvents) {
+        for (const ei of event.items) {
+            usedQtyMap.set(ei.productId, (usedQtyMap.get(ei.productId) ?? 0) + ei.quantity)
+        }
+    }
 
     // 2. Check each item
     for (const item of items) {
-        const product = await prisma.product.findUnique({
-            where: { id: item.productId },
-        })
-
+        const product = productMap.get(item.productId)
         if (!product) {
             return { success: false, error: `Producto no encontrado: ${item.productId}` }
         }
 
-        let usedQuantity = 0
-        for (const event of overlappingEvents) {
-            const eventItem = event.items.find((ei: any) => ei.productId === item.productId)
-            if (eventItem) {
-                usedQuantity += eventItem.quantity
-            }
-        }
+        const usedQuantity = usedQtyMap.get(item.productId) ?? 0
 
-        // Check if requested quantity + used quantity exceeds total available (minus damaged)
         if (usedQuantity + item.quantity > (product.totalQuantity - product.quantityDamaged)) {
             return {
                 success: false,
@@ -71,57 +77,59 @@ export async function getProducts(filters?: {
     startDate?: Date
     endDate?: Date
 }) {
-    try {
-        const products = await prisma.product.findMany({
-            orderBy: { name: 'asc' },
-        })
+    const dateKey = filters?.startDate
+        ? `${filters.startDate.toISOString().slice(0, 10)}`
+        : 'no-date'
 
-        // Si no hay filtros, devolver inventario estático (o actual?)
-        // El usuario quiere que "se actualice automáticamente".
-        // Para "Inventario Principal", deberíamos usar "Ahora" si no se pasan fechas,
-        // O dejar que el cliente decida.
-        // Vamos a implementar la lógica de cálculo si se pasan fechas.
+    const getCachedProducts = unstable_cache(
+        async () => {
+            // Run products fetch and active events fetch in parallel when filters are provided
+            const activeEventsPromise = (filters?.startDate && filters?.endDate)
+                ? prisma.event.findMany({
+                    where: {
+                        status: { in: ['RESERVADO', 'DESPACHADO'] },
+                        OR: [{ startDate: { lte: filters.endDate }, endDate: { gte: filters.startDate } }],
+                    },
+                    select: { items: { select: { productId: true, quantity: true } } }
+                })
+                : Promise.resolve(null)
 
-        let allocationMap = new Map<string, number>()
+            const [products, activeEventsResult] = await Promise.all([
+                prisma.product.findMany({ orderBy: { name: 'asc' } }),
+                activeEventsPromise,
+            ])
 
-        if (filters?.startDate && filters?.endDate) {
-            // Find events overlapping with the requested range
-            const activeEvents = await prisma.event.findMany({
-                where: {
-                    status: { in: ['RESERVADO', 'DESPACHADO'] },
-                    OR: [
-                        {
-                            startDate: { lte: filters.endDate },
-                            endDate: { gte: filters.startDate },
-                        },
-                    ],
-                },
-                include: { items: true }
-            })
-
-            // Calculate allocated quantity per product
-            for (const event of activeEvents) {
-                for (const item of event.items) {
-                    const current = allocationMap.get(item.productId) || 0
-                    allocationMap.set(item.productId, current + item.quantity)
+            const allocationMap = new Map<string, number>()
+            if (activeEventsResult) {
+                for (const event of activeEventsResult) {
+                    for (const item of event.items) {
+                        allocationMap.set(item.productId, (allocationMap.get(item.productId) ?? 0) + item.quantity)
+                    }
                 }
             }
-        }
 
-        // Map products to include dynamic availability
-        const detailedProducts = products.map(product => {
-            const allocated = allocationMap.get(product.id) || 0
-            const damaged = product.quantityDamaged || 0
-            const available = Math.max(0, product.totalQuantity - damaged - allocated)
+            // Map products to include dynamic availability
+            const detailedProducts = products.map(product => {
+                const allocated = allocationMap.get(product.id) || 0
+                const damaged = product.quantityDamaged || 0
+                const available = Math.max(0, product.totalQuantity - damaged - allocated)
 
-            return {
-                ...product,
-                quantityDamaged: damaged, // Ensure it's returned
-                availableQuantity: available,
-                allocatedQuantity: allocated
-            }
-        })
+                return {
+                    ...product,
+                    quantityDamaged: damaged,
+                    availableQuantity: available,
+                    allocatedQuantity: allocated
+                }
+            })
 
+            return detailedProducts
+        },
+        [`products-${dateKey}`],
+        { revalidate: 30 }
+    )
+
+    try {
+        const detailedProducts = await getCachedProducts()
         return { success: true, data: detailedProducts }
     } catch (error) {
         console.error('Error fetching products:', error)
@@ -734,12 +742,21 @@ export async function registerReturn(eventId: string, items: ReturnItem[]) {
     }
 }
 
-export async function getEvents() {
-    try {
+const getCachedEvents = unstable_cache(
+    async () => {
         const events = await prisma.event.findMany({
             orderBy: { startDate: 'desc' },
             include: { _count: { select: { items: true } } }
         })
+        return events
+    },
+    ['events-list'],
+    { revalidate: 30 }
+)
+
+export async function getEvents() {
+    try {
+        const events = await getCachedEvents()
         return { success: true, data: events }
     } catch (error) {
         console.error('Error fetching events:', error)
@@ -786,6 +803,23 @@ export async function getEventHistory(eventId?: string) {
 export async function getDashboardStats(filters?: {
     year?: number
     month?: number  // 1-12
+}) {
+    const cacheKey = `dashboard-${filters?.year ?? 'all'}-${filters?.month ?? 'all'}`
+    
+    const getCachedDashboard = unstable_cache(
+        async () => {
+            return await _getDashboardStatsInternal(filters)
+        },
+        [cacheKey],
+        { revalidate: 60 }
+    )
+
+    return getCachedDashboard()
+}
+
+async function _getDashboardStatsInternal(filters?: {
+    year?: number
+    month?: number
 }) {
     try {
         const now = new Date()
@@ -834,162 +868,158 @@ export async function getDashboardStats(filters?: {
             }
         }
 
-        // 1. Active Reservations (SIN_CONFIRMAR, RESERVADO, DESPACHADO)
-        // Keep using startDate/overlap logic or just startDate as before for consistency
-        const activeReservations = await prisma.event.count({
-            where: {
-                status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] },
-                ...dateFilter
-            }
-        })
-
-        // 2. Total Inventory (not filtered by date)
-        const products = await prisma.product.findMany({
-            select: {
-                id: true,
-                name: true,
-                category: true,
-                totalQuantity: true,
-                quantityDamaged: true,
-                priceReplacement: true,
-                priceUnit: true
-            }
-        })
-
-        const totalInventory = products.reduce((acc, curr) => acc + curr.totalQuantity, 0)
-        const totalDamagedQuantity = products.reduce((acc, curr) => acc + (curr.quantityDamaged || 0), 0)
-        const inventoryValue = products.reduce((acc, curr) => acc + (curr.totalQuantity * curr.priceReplacement), 0)
-
-        // Inventory by Category
-        const categoryStats = products.reduce((acc, curr) => {
-            const cat = curr.category || 'Sin Categoría'
-            acc[cat] = (acc[cat] || 0) + curr.totalQuantity
-            return acc
-        }, {} as Record<string, number>)
-
-        const rCategoryStats = Object.entries(categoryStats).map(([name, value]) => ({ name, value }))
-
-        // 3. Pending Returns (EndDate passed + Not Completed)
-        // Uses endDate so it makes sense to filter by endDate frame too
-        const pendingReturns = await prisma.event.count({
-            where: {
-                endDate: { lte: now },
-                status: { notIn: ['COMPLETADO', 'COMPLETED'] },
-                ...dateFilterByEndDate
-            }
-        })
-
-        // 4. Upcoming Events (Next 5 active events from today)
-        const recentEvents = await prisma.event.findMany({
-            take: 5,
-            orderBy: { startDate: 'asc' },
-            where: {
-                status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] },
-                startDate: {
-                    gte: new Date(new Date().setHours(0, 0, 0, 0)) // From start of today
-                }
-            }
-        })
-
-        // 5. Monthly Event Stats (Based on Start Date as before)
-        // Adjust range based on filters
+        // Calculate statsStartDate before parallel queries (needed for some queries)
         let statsStartDate: Date
         let monthsToShow = 6
 
         if (filters?.year && filters?.month) {
-            // Show just the selected month
             statsStartDate = new Date(filters.year, filters.month - 1, 1)
             monthsToShow = 1
         } else if (filters?.year) {
-            // Show all 12 months of the year
             statsStartDate = new Date(filters.year, 0, 1)
             monthsToShow = 12
         } else {
-            // Default: last 6 months
             statsStartDate = new Date()
             statsStartDate.setMonth(statsStartDate.getMonth() - 5)
         }
 
-        const allEvents = await prisma.event.findMany({
-            where: {
-                startDate: { gte: statsStartDate },
-                status: { not: 'CANCELLED' },
-                ...dateFilter
-            },
-            select: { startDate: true }
-        })
+        // Run all independent queries in parallel
+        const [
+            activeReservations,
+            products,
+            pendingReturns,
+            recentEvents,
+            allEvents,
+            completedEvents,
+            activeEvents,
+            completedEventsInRange,
+            totalClients,
+            activeClients,
+            topClientsGrouped,
+            rentalStats,
+            currentlyInUseAgg,
+            completedEventsCount,
+            cancelledEvents,
+        ] = await Promise.all([
+            // 1. Active reservations count
+            prisma.event.count({
+                where: { status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] }, ...dateFilter }
+            }),
+            // 2. All products (for inventory totals)
+            prisma.product.findMany({
+                select: { id: true, name: true, category: true, totalQuantity: true, quantityDamaged: true, priceReplacement: true, priceUnit: true }
+            }),
+            // 3. Pending returns count
+            prisma.event.count({
+                where: { endDate: { lte: now }, status: { notIn: ['COMPLETADO', 'COMPLETED'] }, ...dateFilterByEndDate }
+            }),
+            // 4. Upcoming events (next 5)
+            prisma.event.findMany({
+                take: 5,
+                orderBy: { startDate: 'asc' },
+                where: { status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] }, startDate: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } }
+            }),
+            // 5. Events for monthly chart
+            prisma.event.findMany({
+                where: { startDate: { gte: statsStartDate }, status: { not: 'CANCELLED' }, ...dateFilter },
+                select: { startDate: true }
+            }),
+            // 6. Completed events with items (for revenue)
+            prisma.event.findMany({
+                where: { status: { in: ['COMPLETADO', 'COMPLETED'] }, ...dateFilterByEndDate },
+                include: { items: { include: { product: { select: { priceUnit: true, priceReplacement: true } } } } }
+            }),
+            // 7. Active events with items (for projected revenue)
+            prisma.event.findMany({
+                where: { status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] }, ...dateFilter },
+                include: { items: { include: { product: { select: { priceUnit: true } } } } }
+            }),
+            // 8. Completed events in range for monthly revenue chart
+            prisma.event.findMany({
+                where: { status: { in: ['COMPLETADO', 'COMPLETED'] }, endDate: { gte: statsStartDate }, ...dateFilterByEndDate },
+                select: { endDate: true, items: { include: { product: { select: { priceUnit: true, priceReplacement: true } } } } }
+            }),
+            // 9. Total clients count
+            prisma.client.count(),
+            // 10. Active clients count (use count instead of findMany+length)
+            prisma.client.count({
+                where: { events: { some: { status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] }, ...dateFilter } } }
+            }),
+            // 11. Top clients by event count using groupBy (avoids fetching ALL clients + ALL their events)
+            prisma.event.groupBy({
+                by: ['clientId'],
+                _count: { id: true },
+                where: { clientId: { not: null }, ...(dateFilter.startDate ? dateFilter : {}) },
+                orderBy: { _count: { id: 'desc' } },
+                take: 5,
+            }),
+            // 12. Rental & damage stats per product using groupBy (avoids full join on all eventItems)
+            prisma.eventItem.groupBy({
+                by: ['productId'],
+                _sum: { quantity: true, returnedDamaged: true },
+                where: { event: dateFilter.startDate ? dateFilter : undefined }
+            }),
+            // 13. Currently in use per product (aggregated, no product join needed)
+            prisma.eventItem.groupBy({
+                by: ['productId'],
+                _sum: { quantity: true },
+                where: { event: { status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] } } }
+            }),
+            // 14. Completed events count
+            prisma.event.count({
+                where: { status: { in: ['COMPLETADO', 'COMPLETED'] }, ...dateFilterByEndDate }
+            }),
+            // 15. Cancelled events count
+            prisma.event.count({
+                where: { status: 'CANCELLED', ...dateFilterByEndDate }
+            }),
+        ])
 
+        // --- Compute derived values ---
+
+        // Inventory totals
+        const totalInventory = products.reduce((acc, curr) => acc + curr.totalQuantity, 0)
+        const totalDamagedQuantity = products.reduce((acc, curr) => acc + (curr.quantityDamaged || 0), 0)
+        const inventoryValue = products.reduce((acc, curr) => acc + (curr.totalQuantity * curr.priceReplacement), 0)
+
+        const categoryStatsMap = products.reduce((acc, curr) => {
+            const cat = curr.category || 'Sin Categoría'
+            acc[cat] = (acc[cat] || 0) + curr.totalQuantity
+            return acc
+        }, {} as Record<string, number>)
+        const rCategoryStats = Object.entries(categoryStatsMap).map(([name, value]) => ({ name, value }))
+
+        // Monthly event stats
         const monthlyStatsMap = new Map<string, number>()
-        // Initialize months
         for (let i = 0; i < monthsToShow; i++) {
             const d = new Date(statsStartDate)
             d.setMonth(statsStartDate.getMonth() + i)
             const key = d.toLocaleString('es-MX', { month: 'short', year: filters?.year ? undefined : 'numeric' })
             monthlyStatsMap.set(key, 0)
         }
-
         allEvents.forEach(event => {
             const key = event.startDate.toLocaleString('es-MX', { month: 'short', year: filters?.year ? undefined : 'numeric' })
-            if (monthlyStatsMap.has(key)) {
-                monthlyStatsMap.set(key, monthlyStatsMap.get(key)! + 1)
-            }
+            if (monthlyStatsMap.has(key)) monthlyStatsMap.set(key, monthlyStatsMap.get(key)! + 1)
         })
-
         const monthlyStats = Array.from(monthlyStatsMap.entries())
-            .map(([name, value], index) => ({
-                name: name.charAt(0).toUpperCase() + name.slice(1),
-                value,
-                fill: `var(--chart-${(index % 5) + 1})`
-            }))
+            .map(([name, value], index) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value, fill: `var(--chart-${(index % 5) + 1})` }))
 
-        // 6. Revenue Statistics (Based on Completed Date / End Date)
-        const completedEvents = await prisma.event.findMany({
-            where: {
-                status: { in: ['COMPLETADO', 'COMPLETED'] },
-                ...dateFilterByEndDate
-            },
-            include: {
-                items: {
-                    include: { product: true }
-                }
-            }
-        })
-
+        // Revenue
         let totalRevenue = 0
         let totalDamageCost = 0
-
         completedEvents.forEach(event => {
             event.items.forEach(item => {
-                // Revenue from rentals
                 totalRevenue += item.quantity * item.product.priceUnit
-                // Total cost of damages (only non-restored)
-                if (!(item as any).damageRestored) {
-                    totalDamageCost += item.returnedDamaged * item.product.priceReplacement
-                }
+                if (!(item as any).damageRestored) totalDamageCost += item.returnedDamaged * item.product.priceReplacement
             })
-        })
-
-        // Projected revenue from active/booked events (Still use startDate or overlap? Stick to startDate for now as they are future/current)
-        const activeEvents = await prisma.event.findMany({
-            where: {
-                status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] },
-                ...dateFilter
-            },
-            include: {
-                items: {
-                    include: { product: true }
-                }
-            }
         })
 
         let projectedRevenue = 0
         activeEvents.forEach(event => {
-            event.items.forEach(item => {
-                projectedRevenue += item.quantity * item.product.priceUnit
-            })
+            event.items.forEach(item => { projectedRevenue += item.quantity * item.product.priceUnit })
         })
 
-        // Monthly Revenue (Based on End Date)
+        // Monthly revenue chart
         const monthlyRevenueMap = new Map<string, number>()
         for (let i = 0; i < monthsToShow; i++) {
             const d = new Date(statsStartDate)
@@ -997,154 +1027,44 @@ export async function getDashboardStats(filters?: {
             const key = d.toLocaleString('es-MX', { month: 'short', year: filters?.year ? undefined : 'numeric' })
             monthlyRevenueMap.set(key, 0)
         }
-
-        // Need to query completed events by EndDate for the chart range
-        // Note: statsStartDate was calculated for StartDate charts (last 6 months or specific year/month).
-        // It's probably safe to use the same frame for EndDate.
-        const completedEventsInRange = await prisma.event.findMany({
-            where: {
-                status: { in: ['COMPLETADO', 'COMPLETED'] },
-                endDate: { gte: statsStartDate },
-                ...dateFilterByEndDate
-            },
-            include: {
-                items: {
-                    include: { product: true }
-                }
-            }
-        })
-
         completedEventsInRange.forEach(event => {
-            // Group by EndDate
             const key = event.endDate.toLocaleString('es-MX', { month: 'short', year: filters?.year ? undefined : 'numeric' })
             if (monthlyRevenueMap.has(key)) {
-                const revenue = event.items.reduce((acc, item) => {
-                    return acc + (item.quantity * item.product.priceUnit) + (item.returnedDamaged * item.product.priceReplacement)
-                }, 0)
+                const revenue = event.items.reduce((acc, item) => acc + (item.quantity * item.product.priceUnit) + (item.returnedDamaged * item.product.priceReplacement), 0)
                 monthlyRevenueMap.set(key, monthlyRevenueMap.get(key)! + revenue)
             }
         })
-
         const monthlyRevenue = Array.from(monthlyRevenueMap.entries())
-            .map(([name, value], index) => ({
-                name: name.charAt(0).toUpperCase() + name.slice(1),
-                value,
-                fill: `var(--chart-${(index % 5) + 1})`
-            }))
+            .map(([name, value], index) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value, fill: `var(--chart-${(index % 5) + 1})` }))
 
-        // 7. Client Statistics (not filtered - total is absolute)
-        const totalClients = await prisma.client.count()
+        // Top clients — fetch names for the grouped clientIds in one query
+        const topClientIds = topClientsGrouped.map(c => c.clientId).filter(Boolean) as string[]
+        const topClientNames = topClientIds.length > 0
+            ? await prisma.client.findMany({ where: { id: { in: topClientIds } }, select: { id: true, name: true } })
+            : []
+        const clientNameMap = new Map(topClientNames.map(c => [c.id, c.name]))
+        const topClients = topClientsGrouped
+            .map(c => ({ name: clientNameMap.get(c.clientId!) ?? 'Desconocido', eventCount: c._count.id }))
+            .filter(c => c.eventCount > 0)
 
-        const activeClientsData = await prisma.client.findMany({
-            where: {
-                events: {
-                    some: {
-                        status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] },
-                        ...dateFilter
-                    }
-                }
-            }
-        })
-        const activeClients = activeClientsData.length
-
-        // Top 5 clients by event count (filtered by date - maybe stick to startDate for "Booking activity"?)
-        // Or if we want "Revenue generating clients", use endDate. 
-        // Let's stick to startDate for Client Activity as it reflects when they *engaged* us.
-        const allClientsWithEvents = await prisma.client.findMany({
-            include: {
-                events: {
-                    where: dateFilter.startDate ? dateFilter : undefined
-                }
-            }
-        })
-
-        const topClients = allClientsWithEvents
-            .map(client => ({
-                name: client.name,
-                eventCount: client.events.length
-            }))
-            .filter(client => client.eventCount > 0)
-            .sort((a, b) => b.eventCount - a.eventCount)
+        // Top rented & damaged products using the products map
+        const productMap = new Map(products.map(p => [p.id, p.name]))
+        const topRentedProducts = rentalStats
+            .filter(r => (r._sum.quantity ?? 0) > 0)
+            .sort((a, b) => (b._sum.quantity ?? 0) - (a._sum.quantity ?? 0))
             .slice(0, 5)
-
-        // 8. Product Statistics
-        // Top rented products (filtered by date)
-        const eventItems = await prisma.eventItem.findMany({
-            where: {
-                event: dateFilter.startDate ? dateFilter : undefined
-            },
-            include: { product: true }
-        })
-
-        const productRentalCount = new Map<string, { name: string, count: number }>()
-        const productDamageCount = new Map<string, { name: string, count: number }>()
-
-        eventItems.forEach(item => {
-            // Count rentals
-            const rentalKey = item.productId
-            if (!productRentalCount.has(rentalKey)) {
-                productRentalCount.set(rentalKey, { name: item.product.name, count: 0 })
-            }
-            productRentalCount.get(rentalKey)!.count += item.quantity
-
-            // Count damages
-            if (item.returnedDamaged > 0) {
-                if (!productDamageCount.has(rentalKey)) {
-                    productDamageCount.set(rentalKey, { name: item.product.name, count: 0 })
-                }
-                productDamageCount.get(rentalKey)!.count += item.returnedDamaged
-            }
-        })
-
-        const topRentedProducts = Array.from(productRentalCount.values())
-            .sort((a, b) => b.count - a.count)
+            .map(r => ({ name: productMap.get(r.productId) ?? r.productId, count: r._sum.quantity ?? 0 }))
+        const topDamagedProducts = rentalStats
+            .filter(r => (r._sum.returnedDamaged ?? 0) > 0)
+            .sort((a, b) => (b._sum.returnedDamaged ?? 0) - (a._sum.returnedDamaged ?? 0))
             .slice(0, 5)
+            .map(r => ({ name: productMap.get(r.productId) ?? r.productId, count: r._sum.returnedDamaged ?? 0 }))
 
-        const topDamagedProducts = Array.from(productDamageCount.values())
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 5)
-
-        // Utilization rate (percentage of inventory currently in use - not filtered by date)
-        const currentlyInUse = await prisma.eventItem.findMany({
-            where: {
-                event: {
-                    status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] }
-                }
-            },
-            include: { product: true }
-        })
-
-        const inUseByProduct = new Map<string, number>()
-        currentlyInUse.forEach(item => {
-            inUseByProduct.set(item.productId, (inUseByProduct.get(item.productId) || 0) + item.quantity)
-        })
-
-        let totalInUse = 0
-        inUseByProduct.forEach(qty => totalInUse += qty)
-
+        // Utilization rate
+        const totalInUse = currentlyInUseAgg.reduce((acc, r) => acc + (r._sum.quantity ?? 0), 0)
         const utilizationRate = totalInventory > 0 ? (totalInUse / totalInventory) * 100 : 0
 
-        // 9. Event Statistics
-        // Completed -> use endDate
-        const completedEventsCount = await prisma.event.count({
-            where: {
-                status: { in: ['COMPLETADO', 'COMPLETED'] },
-                ...dateFilterByEndDate
-            }
-        })
-
-        // Cancelled -> use endDate (as the date if it was supposed to happen) or startDate? 
-        // Let's use endDate to be consistent with "Finalized".
-        const cancelledEvents = await prisma.event.count({
-            where: {
-                status: 'CANCELLED',
-                ...dateFilterByEndDate
-            }
-        })
-
-        const averageEventValue = completedEvents.length > 0
-            ? totalRevenue / completedEvents.length
-            : 0
+        const averageEventValue = completedEvents.length > 0 ? totalRevenue / completedEvents.length : 0
 
         return {
             success: true,

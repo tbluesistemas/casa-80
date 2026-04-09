@@ -6,8 +6,7 @@ import { getCurrentRole } from "@/lib/auth";
 import { ExportButton } from "@/components/export/export-button";
 
 export default async function EventsPage() {
-    const { data: events } = await getEvents();
-    const role = await getCurrentRole();
+    const [{ data: events }, role] = await Promise.all([getEvents(), getCurrentRole()]);
 
     return (
         <div className="flex-1 space-y-4 md:space-y-8 p-4 md:p-8 pt-4 md:pt-6">

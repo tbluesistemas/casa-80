@@ -1,62 +1,88 @@
 'use server'
 
 import { prisma } from '@/lib/prisma'
+import { unstable_cache } from 'next/cache'
 
 // ==================== Client Actions ====================
 
+const getCachedClientsWithStats = unstable_cache(
+    async () => {
+        // Run 3 lightweight parallel queries instead of 1 massive deep include
+        const [clients, eventCountsByClient, revenueByClient] = await Promise.all([
+            // 1. Get client basic data only (no includes)
+            prisma.client.findMany({
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    phone: true,
+                    address: true,
+                    createdAt: true,
+                },
+                orderBy: { name: 'asc' }
+            }),
+
+            // 2. Count events per client grouped by status
+            prisma.event.groupBy({
+                by: ['clientId', 'status'],
+                _count: { id: true },
+                where: { clientId: { not: null } }
+            }),
+
+            // 3. Sum revenue per client using raw aggregation
+            prisma.$queryRaw<{ clientId: string; totalSpent: number }[]>`
+                SELECT e."clientId" as "clientId", 
+                       COALESCE(SUM(ei.quantity * p."priceUnit"), 0)::float as "totalSpent"
+                FROM "Event" e
+                JOIN "EventItem" ei ON ei."eventId" = e.id
+                JOIN "Product" p ON p.id = ei."productId"
+                WHERE e."clientId" IS NOT NULL
+                GROUP BY e."clientId"
+            `
+        ])
+
+        // Build lookup maps for O(1) access
+        const activeStatuses = ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO']
+
+        const statsMap = new Map<string, { totalEvents: number; activeEvents: number; completedEvents: number }>()
+        for (const row of eventCountsByClient) {
+            if (!row.clientId) continue
+            const existing = statsMap.get(row.clientId) || { totalEvents: 0, activeEvents: 0, completedEvents: 0 }
+            existing.totalEvents += row._count.id
+            if (activeStatuses.includes(row.status)) {
+                existing.activeEvents += row._count.id
+            }
+            if (row.status === 'COMPLETADO') {
+                existing.completedEvents += row._count.id
+            }
+            statsMap.set(row.clientId, existing)
+        }
+
+        const revenueMap = new Map<string, number>()
+        for (const row of revenueByClient) {
+            revenueMap.set(row.clientId, row.totalSpent)
+        }
+
+        // Combine
+        const clientsWithStats = clients.map(client => ({
+            ...client,
+            stats: {
+                totalEvents: statsMap.get(client.id)?.totalEvents ?? 0,
+                activeEvents: statsMap.get(client.id)?.activeEvents ?? 0,
+                completedEvents: statsMap.get(client.id)?.completedEvents ?? 0,
+                totalSpent: revenueMap.get(client.id) ?? 0,
+            }
+        }))
+
+        return clientsWithStats
+    },
+    ['clients-with-stats'],
+    { revalidate: 30 }
+)
+
 export async function getAllClientsWithStats() {
     try {
-        const clients = await prisma.client.findMany({
-            include: {
-                events: {
-                    include: {
-                        items: {
-                            include: {
-                                product: true
-                            }
-                        }
-                    },
-                    orderBy: {
-                        startDate: 'desc'
-                    }
-                }
-            },
-            orderBy: {
-                name: 'asc'
-            }
-        })
-
-        // Calculate stats for each client
-        const clientsWithStats = clients.map((client) => {
-            const totalEvents = client.events.length
-            const activeEvents = client.events.filter((e) =>
-                ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'].includes(e.status)
-            ).length
-            const completedEvents = client.events.filter((e) => e.status === 'COMPLETADO').length
-
-            const totalSpent = client.events.reduce((acc: number, event) => {
-                const eventTotal = event.items.reduce((sum: number, item) =>
-                    sum + (item.quantity * item.product.priceUnit), 0
-                )
-                return acc + eventTotal
-            }, 0)
-
-            return {
-                id: client.id,
-                name: client.name,
-                email: client.email,
-                phone: client.phone,
-                address: client.address,
-                createdAt: client.createdAt,
-                stats: {
-                    totalEvents,
-                    activeEvents,
-                    completedEvents,
-                    totalSpent
-                }
-            }
-        })
-
+        const clientsWithStats = await getCachedClientsWithStats()
         return { success: true, data: clientsWithStats }
     } catch (error) {
         console.error('Error fetching clients:', error)

@@ -4,15 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, Home, Package, PlusCircle, Users, LogOut } from "lucide-react";
-import { signOut } from "next-auth/react"; // Assuming we use client-side signOut or server action
-import { useRouter } from "next/navigation";
-
-// Since signOut from next-auth/react is for client side, we need to wrap it or use a server action. 
-// But simple way: use window.location or server action.
-// Actually, standard way is import { signOut } from "next-auth/react" for client components.
-// sidebar is 'use client'.
-
+import { CalendarDays, Home, Package, PlusCircle, Users, LogOut, CreditCard, LayoutTemplate, Settings } from "lucide-react";
 import { signOut as nextAuthSignOut } from "next-auth/react";
 import { useAuth } from "@/components/auth-provider";
 
@@ -32,9 +24,12 @@ export function Sidebar({ onLinkClick, className }: SidebarProps) {
         { href: "/clients", label: "Clientes", icon: Users },
     ];
 
-    if (role === 'ADMIN') {
-        links.push({ href: "/admin/users", label: "Usuarios", icon: Users });
-    }
+    const adminLinks = role === 'ADMIN' ? [
+        { href: "/admin", label: "Panel Admin", icon: Settings },
+        { href: "/admin/users", label: "Usuarios", icon: Users },
+        { href: "/admin/contenido", label: "Contenido Web", icon: LayoutTemplate },
+        { href: "/admin/pagos", label: "Métodos de Pago", icon: CreditCard },
+    ] : [];
 
     return (
         <div className={cn("flex h-full w-64 flex-col border-r bg-background", className)}>
@@ -64,6 +59,33 @@ export function Sidebar({ onLinkClick, className }: SidebarProps) {
                             </Link>
                         );
                     })}
+                    {adminLinks.length > 0 && (
+                        <>
+                            <div className="px-3 pt-4 pb-1">
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                                    Administración
+                                </span>
+                            </div>
+                            {adminLinks.map((link) => {
+                                const Icon = link.icon;
+                                const isActive = pathname === link.href;
+                                return (
+                                    <Link
+                                        key={link.href}
+                                        href={link.href}
+                                        onClick={onLinkClick}
+                                        className={cn(
+                                            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
+                                            isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground"
+                                        )}
+                                    >
+                                        <Icon className="h-4 w-4" />
+                                        {link.label}
+                                    </Link>
+                                );
+                            })}
+                        </>
+                    )}
                 </nav>
             </div>
             <div className="border-t p-4 flex flex-col gap-2">

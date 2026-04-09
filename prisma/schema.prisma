@@ -41,6 +41,8 @@ model Product {
   inventoryLogs    InventoryLog[]
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
+
+  @@index([category])
 }
 
 model Event {
@@ -59,6 +61,11 @@ model Event {
   client    Client?     @relation(fields: [clientId], references: [id])
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
+
+  @@index([status])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([clientId])
 }
 
 model Client {
@@ -89,8 +96,10 @@ model EventItem {
   damagePaid      Boolean   @default(false)
   damageRestored  Boolean   @default(false)
   restoredAt      DateTime?
-  
+
   @@unique([eventId, productId])
+  @@index([productId])
+  @@index([eventId])
 }
 
 model InventoryLog {
@@ -104,6 +113,8 @@ model InventoryLog {
   verifiedBy  String?
   notes       String?
   createdAt   DateTime @default(now())
+
+  @@index([productId])
 }
 
 model EventHistory {
@@ -115,4 +126,6 @@ model EventHistory {
   changedBy      String?  // User email or identifier
   reason         String?  // Optional notes for the change
   createdAt      DateTime @default(now())
+
+  @@index([eventId])
 }

@@ -42,6 +42,8 @@ export function CreateProductDialog() {
             return
         }
 
+
+
         setLoading(true)
 
         const result = await createProduct({

@@ -24,21 +24,18 @@ export const metadata: Metadata = {
 };
 
 import { AuthProvider } from "@/components/auth-provider";
-import { getCurrentRole } from "@/lib/auth";
 
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const role = await getCurrentRole();
-
   return (
     <html lang="es" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${styles.body}`}
       >
-        <AuthProvider initialRole={role}>
+        <AuthProvider>
           <AppShell>
             {children}
           </AppShell>
