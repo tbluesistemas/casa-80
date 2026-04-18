@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
+    'Cache-Control': 'no-store, no-cache, max-age=0, must-revalidate',
 }
-
-const BACKEND_URL = process.env.BACKEND_API_URL || 'http://localhost:3001'
-const API_KEY = process.env.BACKEND_API_KEY || 'casa80-api-key-2024'
 
 export async function OPTIONS() {
     return NextResponse.json({}, { headers: corsHeaders })
@@ -16,37 +18,32 @@ export async function OPTIONS() {
 export async function GET(req: NextRequest) {
     try {
         const { searchParams } = new URL(req.url)
-        const tipo = searchParams.get('tipo') // Optional filter: hero, galeria, nosotros, etc.
+        const tipo = searchParams.get('tipo')
 
-        const url = new URL(`${BACKEND_URL}/api/contenido`)
-        if (tipo) url.searchParams.set('tipo', tipo)
-
-        const res = await fetch(url.toString(), {
-            headers: { 'x-api-key': API_KEY },
-            cache: 'no-store',
+        const secciones = await prisma.webContentSection.findMany({
+            where: {
+                activo: true,
+                ...(tipo ? { tipo } : {}),
+            },
+            orderBy: [{ orden: 'asc' }, { createdAt: 'asc' }],
+            select: {
+                id: true,
+                tipo: true,
+                titulo: true,
+                subtitulo: true,
+                descripcion: true,
+                imageUrl: true,
+                orden: true,
+                activo: true,
+            },
         })
-
-        if (!res.ok) {
-            return NextResponse.json(
-                { success: false, error: 'No se pudo obtener el contenido' },
-                { status: 502, headers: corsHeaders }
-            )
-        }
-
-        const data = await res.json()
-
-        // Only expose active sections, sorted by orden
-        const secciones = Array.isArray(data)
-            ? data
-                .filter((s: any) => s.activo !== false)
-                .sort((a: any, b: any) => (a.orden ?? 0) - (b.orden ?? 0))
-            : []
 
         return NextResponse.json(
             { success: true, count: secciones.length, data: secciones },
             { status: 200, headers: corsHeaders }
         )
-    } catch {
+    } catch (error) {
+        console.error('Error fetching public content:', error)
         return NextResponse.json(
             { success: false, error: 'Error interno del servidor' },
             { status: 500, headers: corsHeaders }

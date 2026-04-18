@@ -129,3 +129,35 @@ model EventHistory {
 
   @@index([eventId])
 }
+
+model WebContentSection {
+  id          String   @id @default(cuid())
+  tipo        String   @default("general")
+  titulo      String
+  subtitulo   String   @default("")
+  descripcion String   @default("")
+  imageUrl    String   @default("")
+  orden       Int      @default(0)
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tipo])
+  @@index([activo, orden])
+}
+
+model PaymentMethod {
+  id           String   @id
+  nombre       String
+  color        String   @default("#000000")
+  titular      String
+  numeroCuenta String
+  cci          String   @default("")
+  qrImageUrl   String   @default("")
+  activo       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([activo])
+  @@index([nombre])
+}

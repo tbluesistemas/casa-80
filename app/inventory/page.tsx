@@ -2,6 +2,10 @@ import { getProducts } from "@/lib/actions"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { InventoryClient } from "@/components/inventory/inventory-client"
 
+function serializeDate(value: Date | string) {
+    return value instanceof Date ? value.toISOString() : new Date(value).toISOString()
+}
+
 export default async function InventoryPage() {
     // Pass current date range (whole UTC day) to get real-time availability
     // This matches how events are often stored (00:00 UTC)
@@ -28,8 +32,8 @@ export default async function InventoryPage() {
     // Serialize dates to avoid hydration errors
     const serializedProducts = products.map(p => ({
         ...p,
-        updatedAt: p.updatedAt.toISOString(),
-        createdAt: p.createdAt.toISOString()
+        updatedAt: serializeDate(p.updatedAt),
+        createdAt: serializeDate(p.createdAt)
     }))
 
     return <InventoryClient products={serializedProducts} />

@@ -1,8 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentRole } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 
-const BACKEND_URL = process.env.BACKEND_API_URL || 'http://localhost:3001'
-const API_KEY = process.env.BACKEND_API_KEY || 'casa80-api-key-2024'
+type PaymentPayload = {
+    id?: string
+    nombre?: string
+    color?: string
+    titular?: string
+    numeroCuenta?: string
+    cci?: string
+    qrImageUrl?: string
+    activo?: boolean
+}
+
+function normalizePayload(body: PaymentPayload) {
+    return {
+        id: body.id?.trim().toLowerCase() || '',
+        nombre: body.nombre?.trim() || '',
+        color: body.color?.trim() || '#000000',
+        titular: body.titular?.trim() || '',
+        numeroCuenta: body.numeroCuenta?.trim() || '',
+        cci: body.cci?.trim() || '',
+        qrImageUrl: body.qrImageUrl?.trim() || '',
+        activo: body.activo ?? true,
+    }
+}
 
 export async function GET() {
     const role = await getCurrentRole()
@@ -10,13 +32,11 @@ export async function GET() {
         return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
     }
 
-    const res = await fetch(`${BACKEND_URL}/api/bancos`, {
-        headers: { 'x-api-key': API_KEY },
-        cache: 'no-store',
+    const bancos = await prisma.paymentMethod.findMany({
+        orderBy: [{ nombre: 'asc' }, { createdAt: 'asc' }],
     })
 
-    const data = await res.json()
-    return NextResponse.json(data, { status: res.status })
+    return NextResponse.json(bancos)
 }
 
 export async function POST(req: NextRequest) {
@@ -25,16 +45,23 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
     }
 
-    const body = await req.json()
-    const res = await fetch(`${BACKEND_URL}/api/bancos`, {
-        method: 'POST',
-        headers: {
-            'x-api-key': API_KEY,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-    })
+    try {
+        const body = normalizePayload(await req.json())
 
-    const data = await res.json()
-    return NextResponse.json(data, { status: res.status })
+        if (!body.id || !body.nombre || !body.titular || !body.numeroCuenta) {
+            return NextResponse.json(
+                { message: 'ID, nombre, titular y número de cuenta son obligatorios' },
+                { status: 400 }
+            )
+        }
+
+        const created = await prisma.paymentMethod.create({
+            data: body,
+        })
+
+        return NextResponse.json(created, { status: 201 })
+    } catch (error) {
+        console.error('Error creating payment method:', error)
+        return NextResponse.json({ message: 'No se pudo crear el método de pago' }, { status: 500 })
+    }
 }
