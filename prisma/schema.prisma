@@ -161,3 +161,15 @@ model PaymentMethod {
   @@index([activo])
   @@index([nombre])
 }
+
+model HeroCarouselImage {
+  id        String   @id @default(cuid())
+  imageUrl  String
+  alt       String   @default("")
+  orden     Int      @default(0)
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo, orden])
+}

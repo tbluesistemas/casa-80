@@ -7,6 +7,7 @@ import React, {
     useMemo,
     useState,
 } from 'react'
+import type { Session } from 'next-auth'
 import { SessionProvider, useSession } from 'next-auth/react'
 
 type UserRole = 'ADMIN' | 'VIEWER'
@@ -46,12 +47,15 @@ function AuthSessionProvider({
 }
 
 export function AuthProvider({
-    children
+    children,
+    session
 }: {
     children: React.ReactNode
+    session?: Session | null
 }) {
     return (
         <SessionProvider
+            session={session}
             refetchInterval={0}
             refetchOnWindowFocus={false}
         >

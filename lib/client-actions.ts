@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { unstable_cache } from 'next/cache'
+import { ACTIVE_EVENT_STATUSES, COMPLETED_EVENT_STATUSES } from '@/lib/event-status'
 
 // ==================== Client Actions ====================
 
@@ -42,17 +43,15 @@ const getCachedClientsWithStats = unstable_cache(
         ])
 
         // Build lookup maps for O(1) access
-        const activeStatuses = ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO']
-
         const statsMap = new Map<string, { totalEvents: number; activeEvents: number; completedEvents: number }>()
         for (const row of eventCountsByClient) {
             if (!row.clientId) continue
             const existing = statsMap.get(row.clientId) || { totalEvents: 0, activeEvents: 0, completedEvents: 0 }
             existing.totalEvents += row._count.id
-            if (activeStatuses.includes(row.status)) {
+            if (ACTIVE_EVENT_STATUSES.includes(row.status as (typeof ACTIVE_EVENT_STATUSES)[number])) {
                 existing.activeEvents += row._count.id
             }
-            if (row.status === 'COMPLETADO') {
+            if (COMPLETED_EVENT_STATUSES.includes(row.status as (typeof COMPLETED_EVENT_STATUSES)[number])) {
                 existing.completedEvents += row._count.id
             }
             statsMap.set(row.clientId, existing)
@@ -94,12 +93,28 @@ export async function getClientById(id: string) {
     try {
         const client = await prisma.client.findUnique({
             where: { id },
-            include: {
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                phone: true,
+                address: true,
+                createdAt: true,
                 events: {
-                    include: {
+                    select: {
+                        id: true,
+                        name: true,
+                        startDate: true,
+                        endDate: true,
+                        status: true,
                         items: {
-                            include: {
-                                product: true
+                            select: {
+                                quantity: true,
+                                product: {
+                                    select: {
+                                        priceUnit: true,
+                                    }
+                                }
                             }
                         }
                     },
@@ -117,9 +132,11 @@ export async function getClientById(id: string) {
         // Calculate stats
         const totalEvents = client.events.length
         const activeEvents = client.events.filter((e) =>
-            ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'].includes(e.status)
+            ACTIVE_EVENT_STATUSES.includes(e.status as (typeof ACTIVE_EVENT_STATUSES)[number])
         ).length
-        const completedEvents = client.events.filter((e) => e.status === 'COMPLETADO').length
+        const completedEvents = client.events.filter((e) =>
+            COMPLETED_EVENT_STATUSES.includes(e.status as (typeof COMPLETED_EVENT_STATUSES)[number])
+        ).length
 
         const totalSpent = client.events.reduce((acc: number, event) => {
             const eventTotal = event.items.reduce((sum: number, item) =>

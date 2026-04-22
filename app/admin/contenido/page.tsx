@@ -1,6 +1,7 @@
 import { getCurrentRole } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { ContenidoManager } from '@/components/admin/contenido-manager'
+import { HeroCarouselManager } from '@/components/admin/hero-carousel-manager'
 import { LayoutTemplate } from 'lucide-react'
 
 export default async function ContenidoPage() {
@@ -20,7 +21,30 @@ export default async function ContenidoPage() {
                     </p>
                 </div>
             </div>
-            <ContenidoManager />
+            
+            <div className="grid gap-6 md:gap-8">
+                {/* Gestor del Hero Carrusel */}
+                <div className="bg-card rounded-xl border p-4 md:p-6 space-y-4">
+                    <div>
+                        <h3 className="text-lg font-semibold">Hero / Carrusel Principal</h3>
+                        <p className="text-sm text-muted-foreground">
+                            Imágenes dinámicas de la portada. Usa una sección de <b>Contenido Web</b> con tipo <b>Hero / Portada</b> para los textos.
+                        </p>
+                    </div>
+                    <HeroCarouselManager />
+                </div>
+
+                {/* Gestor de otras secciones */}
+                <div className="bg-card rounded-xl border p-4 md:p-6 space-y-4">
+                    <div>
+                        <h3 className="text-lg font-semibold">Secciones de Contenido (Textos e imágenes estáticas)</h3>
+                        <p className="text-sm text-muted-foreground">
+                            Secciones adicionales de información en la página web. Si deseas cambiar el texto del Hero Principal, edita la sección tipo "Hero / Portada".
+                        </p>
+                    </div>
+                    <ContenidoManager />
+                </div>
+            </div>
         </div>
     )
 }

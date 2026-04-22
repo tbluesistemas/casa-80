@@ -5,6 +5,12 @@ export type EventStatus =
     | 'COMPLETADO'
     | 'CANCELADO'
 
+export const ACTIVE_EVENT_STATUSES = ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] as const
+export const INVENTORY_BLOCKING_EVENT_STATUSES = ['RESERVADO', 'DESPACHADO'] as const
+export const COMPLETED_EVENT_STATUSES = ['COMPLETADO', 'COMPLETED'] as const
+export const CANCELLED_EVENT_STATUSES = ['CANCELADO', 'CANCELLED'] as const
+export const CLOSED_EVENT_STATUSES = [...COMPLETED_EVENT_STATUSES, ...CANCELLED_EVENT_STATUSES] as const
+
 export const EVENT_STATUS_LABELS: Record<EventStatus, string> = {
     SIN_CONFIRMAR: 'Sin Confirmar',
     RESERVADO: 'Reservado',

@@ -23,6 +23,7 @@ import {
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, RefreshCw, AlertCircle, Image as ImageIcon, Eye } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
+import { ImageUpload } from '@/components/inventory/image-upload'
 
 type SeccionTipo = 'hero' | 'galeria' | 'nosotros' | 'servicios' | 'contacto' | 'general'
 
@@ -220,21 +221,13 @@ export function ContenidoManager() {
                 />
             </div>
             <div className="grid grid-cols-4 items-start gap-4">
-                <Label className="text-right text-xs pt-2">Imagen URL</Label>
-                <div className="col-span-3 space-y-2">
-                    <Input
-                        placeholder="https://..."
+                <Label className="text-right text-xs pt-2">Imagen</Label>
+                <div className="col-span-3">
+                    <ImageUpload
                         value={form.imageUrl}
-                        onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+                        onChange={(url) => setForm({ ...form, imageUrl: url || '' })}
+                        folderPath="web"
                     />
-                    {form.imageUrl && (
-                        <img
-                            src={form.imageUrl}
-                            alt="Preview"
-                            className="h-20 w-full rounded border object-cover"
-                            onError={(e) => (e.currentTarget.style.display = 'none')}
-                        />
-                    )}
                 </div>
             </div>
             <div className="grid grid-cols-4 items-center gap-4">

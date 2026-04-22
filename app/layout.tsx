@@ -4,6 +4,7 @@ import "./globals.css";
 import { AppShell } from "@/components/app-shell";
 import styles from "./layout.module.css";
 import { Toaster } from "@/components/ui/sonner";
+import { getCurrentSession } from "@/lib/auth";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,12 +31,14 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await getCurrentSession();
+
   return (
     <html lang="es" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${styles.body}`}
       >
-        <AuthProvider>
+        <AuthProvider session={session}>
           <AppShell>
             {children}
           </AppShell>

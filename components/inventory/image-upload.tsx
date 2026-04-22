@@ -17,9 +17,17 @@ interface ImageUploadProps {
     value?: string | null
     onChange: (url: string | null) => void
     disabled?: boolean
+    bucket?: string
+    folderPath?: string
 }
 
-export function ImageUpload({ value, onChange, disabled }: ImageUploadProps) {
+export function ImageUpload({ 
+    value, 
+    onChange, 
+    disabled, 
+    bucket = 'product-images',
+    folderPath = 'products'
+}: ImageUploadProps) {
     const [uploading, setUploading] = useState(false)
     const [progress, setProgress] = useState(0)
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -92,10 +100,10 @@ export function ImageUpload({ value, onChange, disabled }: ImageUploadProps) {
             // 2. Upload to Supabase
             const fileExt = 'webp'
             const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`
-            const filePath = `products/${fileName}`
+            const filePath = `${folderPath}/${fileName}`
 
             const { data, error } = await supabase.storage
-                .from('product-images')
+                .from(bucket)
                 .upload(filePath, compressedBlob, {
                     contentType: 'image/webp',
                     cacheControl: '3600',
@@ -107,7 +115,7 @@ export function ImageUpload({ value, onChange, disabled }: ImageUploadProps) {
 
             // 3. Get Public URL
             const { data: { publicUrl } } = supabase.storage
-                .from('product-images')
+                .from(bucket)
                 .getPublicUrl(filePath)
 
             onChange(publicUrl)

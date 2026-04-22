@@ -3,10 +3,144 @@
 import { prisma } from '@/lib/prisma'
 import { revalidatePath, unstable_cache } from 'next/cache'
 import { sendReservationEmail } from '@/lib/email'
-import { getCurrentRole, UserRole } from '@/lib/auth'
+import { getCurrentRole } from '@/lib/auth'
 import { signIn, auth } from '@/auth'
+import { Prisma } from '@prisma/client'
 import { AuthError } from 'next-auth'
 import bcrypt from 'bcryptjs'
+import {
+    ACTIVE_EVENT_STATUSES,
+    COMPLETED_EVENT_STATUSES,
+    INVENTORY_BLOCKING_EVENT_STATUSES,
+    CANCELLED_EVENT_STATUSES,
+    CLOSED_EVENT_STATUSES,
+    EventStatus,
+    canTransition
+} from './event-status'
+
+type DateRangeFilter = {
+    gte?: Date
+    lte?: Date
+}
+
+type DashboardQueryRow = {
+    totalRevenue: number | null
+    totalDamageCost: number | null
+}
+
+type MonthlyCountRow = {
+    month: Date
+    total: number
+}
+
+type MonthlyRevenueRow = {
+    month: Date
+    total: number
+}
+
+const inventoryProductSelect = {
+    id: true,
+    code: true,
+    name: true,
+    category: true,
+    subcategory: true,
+    novedad: true,
+    description: true,
+    imageUrl: true,
+    totalQuantity: true,
+    priceUnit: true,
+    priceReplacement: true,
+    quantityDamaged: true,
+    createdAt: true,
+    updatedAt: true,
+} satisfies Prisma.ProductSelect
+
+const eventDetailSelect = {
+    id: true,
+    name: true,
+    startDate: true,
+    endDate: true,
+    status: true,
+    notes: true,
+    deposit: true,
+    transport: true,
+    discount: true,
+    client: {
+        select: {
+            id: true,
+            name: true,
+            document: true,
+            email: true,
+            phone: true,
+            address: true,
+            city: true,
+        }
+    },
+    items: {
+        orderBy: { product: { name: 'asc' } },
+        select: {
+            productId: true,
+            quantity: true,
+            returnedGood: true,
+            returnedDamaged: true,
+            damagePaid: true,
+            damageRestored: true,
+            product: {
+                select: {
+                    id: true,
+                    name: true,
+                    totalQuantity: true,
+                    priceUnit: true,
+                    priceReplacement: true,
+                }
+            }
+        }
+    },
+    history: {
+        orderBy: { createdAt: 'desc' },
+        select: {
+            id: true,
+            previousStatus: true,
+            newStatus: true,
+            changedBy: true,
+            reason: true,
+            createdAt: true,
+        }
+    }
+} satisfies Prisma.EventSelect
+
+const getCachedProductCatalog = unstable_cache(
+    async () => prisma.product.findMany({
+        select: inventoryProductSelect,
+        orderBy: { name: 'asc' }
+    }),
+    ['product-catalog'],
+    { revalidate: 30 }
+)
+
+function getDateCacheKey(date?: Date) {
+    return date ? date.toISOString() : 'none'
+}
+
+function buildSqlRangeConditions(column: Prisma.Sql, range?: DateRangeFilter) {
+    const conditions: Prisma.Sql[] = []
+
+    if (range?.gte) {
+        conditions.push(Prisma.sql`${column} >= ${range.gte}`)
+    }
+
+    if (range?.lte) {
+        conditions.push(Prisma.sql`${column} <= ${range.lte}`)
+    }
+
+    return conditions
+}
+
+function buildWhereClause(conditions: Prisma.Sql[]) {
+    return conditions.length > 0
+        ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+        : Prisma.empty
+}
 
 // Helper to check availability
 async function checkAvailability(
@@ -17,13 +151,9 @@ async function checkAvailability(
 ) {
     // 1. Find overlapping events
     const whereClause: any = {
-        status: { in: ['RESERVADO', 'DESPACHADO'] }, // Solo estos estados bloquean inventario
-        OR: [
-            {
-                startDate: { lte: endDate },
-                endDate: { gte: startDate },
-            },
-        ],
+        status: { in: [...INVENTORY_BLOCKING_EVENT_STATUSES] }, // Solo estos estados bloquean inventario
+        startDate: { lte: endDate },
+        endDate: { gte: startDate },
     }
 
     if (excludeEventId) {
@@ -77,59 +207,46 @@ export async function getProducts(filters?: {
     startDate?: Date
     endDate?: Date
 }) {
-    const dateKey = filters?.startDate
-        ? `${filters.startDate.toISOString().slice(0, 10)}`
-        : 'no-date'
-
-    const getCachedProducts = unstable_cache(
-        async () => {
-            // Run products fetch and active events fetch in parallel when filters are provided
-            const activeEventsPromise = (filters?.startDate && filters?.endDate)
-                ? prisma.event.findMany({
-                    where: {
-                        status: { in: ['RESERVADO', 'DESPACHADO'] },
-                        OR: [{ startDate: { lte: filters.endDate }, endDate: { gte: filters.startDate } }],
-                    },
-                    select: { items: { select: { productId: true, quantity: true } } }
-                })
-                : Promise.resolve(null)
-
-            const [products, activeEventsResult] = await Promise.all([
-                prisma.product.findMany({ orderBy: { name: 'asc' } }),
-                activeEventsPromise,
-            ])
-
-            const allocationMap = new Map<string, number>()
-            if (activeEventsResult) {
-                for (const event of activeEventsResult) {
-                    for (const item of event.items) {
-                        allocationMap.set(item.productId, (allocationMap.get(item.productId) ?? 0) + item.quantity)
-                    }
-                }
-            }
-
-            // Map products to include dynamic availability
-            const detailedProducts = products.map(product => {
-                const allocated = allocationMap.get(product.id) || 0
-                const damaged = product.quantityDamaged || 0
-                const available = Math.max(0, product.totalQuantity - damaged - allocated)
-
-                return {
-                    ...product,
-                    quantityDamaged: damaged,
-                    availableQuantity: available,
-                    allocatedQuantity: allocated
-                }
-            })
-
-            return detailedProducts
-        },
-        [`products-${dateKey}`],
-        { revalidate: 30 }
-    )
-
     try {
-        const detailedProducts = await getCachedProducts()
+        const allocationRowsPromise = (filters?.startDate && filters?.endDate)
+            ? unstable_cache(
+                async () => prisma.eventItem.groupBy({
+                    by: ['productId'],
+                    _sum: { quantity: true },
+                    where: {
+                        event: {
+                            status: { in: [...INVENTORY_BLOCKING_EVENT_STATUSES] },
+                            startDate: { lte: filters.endDate },
+                            endDate: { gte: filters.startDate },
+                        }
+                    }
+                }),
+                [`product-allocations-${getDateCacheKey(filters.startDate)}-${getDateCacheKey(filters.endDate)}`],
+                { revalidate: 30 }
+            )()
+            : Promise.resolve([])
+
+        const [products, allocationRows] = await Promise.all([
+            getCachedProductCatalog(),
+            allocationRowsPromise,
+        ])
+
+        const allocationMap = new Map(
+            allocationRows.map(row => [row.productId, row._sum.quantity ?? 0])
+        )
+
+        const detailedProducts = products.map(product => {
+            const allocated = allocationMap.get(product.id) ?? 0
+            const damaged = product.quantityDamaged || 0
+
+            return {
+                ...product,
+                quantityDamaged: damaged,
+                availableQuantity: Math.max(0, product.totalQuantity - damaged - allocated),
+                allocatedQuantity: allocated
+            }
+        })
+
         return { success: true, data: detailedProducts }
     } catch (error) {
         console.error('Error fetching products:', error)
@@ -155,28 +272,6 @@ export async function updateProduct(id: string, data: {
         return { success: false, error: 'No autorizado: Permisos insuficientes' }
     }
 
-    // Helper to log history
-    async function logEventStatusChange(
-        eventId: string,
-        newStatus: string,
-        previousStatus: string | null = null,
-        reason: string | null = null
-    ) {
-        const session = await auth()
-        try {
-            await prisma.eventHistory.create({
-                data: {
-                    eventId,
-                    previousStatus,
-                    newStatus,
-                    changedBy: session?.user?.email || 'Sistema',
-                    reason
-                }
-            })
-        } catch (error) {
-            console.error('Error logging history:', error)
-        }
-    }
     try {
         const product = await prisma.product.update({
             where: { id },
@@ -215,6 +310,7 @@ export async function createProduct(data: {
                 novedad: data.novedad || null,
                 description: data.description || null,
                 totalQuantity: data.totalQuantity || 0,
+                priceUnit: data.priceUnit || 0,
                 priceReplacement: data.priceReplacement || 0,
                 imageUrl: data.imageUrl || null,
                 code: data.code || null,
@@ -424,7 +520,7 @@ export async function createEvent(data: {
     discount?: number
     items: CreateEventItem[]
 }) {
-    const { name, startDate, endDate, items, clientId, deposit, transport, discount } = data
+    const { items, clientId, deposit, transport, discount } = data
 
     const role = await getCurrentRole()
     if (role !== 'ADMIN') {
@@ -543,6 +639,7 @@ export async function getInventoryLogs(productId: string) {
         })
         return { success: true, data: logs }
     } catch (error) {
+        console.error('Error fetching inventory logs:', error)
         return { success: false, error: 'Error fetching history' }
     }
 }
@@ -620,118 +717,115 @@ export async function registerReturn(eventId: string, items: ReturnItem[]) {
         return { success: false, error: 'No autorizado: Permisos insuficientes' }
     }
 
-    console.log(`[registerReturn] Starting for eventId: ${eventId}, items: ${items.length}`)
     try {
+        const session = await auth()
         let totalDamageCost = 0
-        let isUpdate = false
 
         // Check if event is already completed to determine if this is an update
         const existingEvent = await prisma.event.findUnique({
             where: { id: eventId },
-            include: { items: true }
+            select: {
+                status: true,
+                items: {
+                    select: {
+                        productId: true,
+                        returnedDamaged: true,
+                    }
+                }
+            }
         })
 
         if (!existingEvent) {
             return { success: false, error: 'Evento no encontrado' }
         }
 
-        if (existingEvent.status === 'COMPLETADO') {
-            isUpdate = true
-        }
+        const currentItems = new Map(
+            existingEvent.items.map(item => [item.productId, item])
+        )
 
-        // Update each item in the event
-        for (const item of items) {
-            console.log(`[registerReturn] Processing item: ${item.productId}, Good: ${item.returnedGood}, Damaged: ${item.returnedDamaged}`)
+        const productIds = items.map(item => item.productId)
+        const products = await prisma.product.findMany({
+            where: { id: { in: productIds } },
+            select: {
+                id: true,
+                priceReplacement: true,
+            }
+        })
 
-            // Get current event item state to calculate diffs
-            const currentItem = existingEvent.items.find(i => i.productId === item.productId)
+        const productsById = new Map(products.map(product => [product.id, product]))
 
+        const updateSpecs = items.map(item => {
+            const currentItem = currentItems.get(item.productId)
             if (!currentItem) {
-                console.error(`[registerReturn] Item not found in event: ${item.productId}`)
-                continue
+                throw new Error(`Item no encontrado en el evento: ${item.productId}`)
             }
 
-            // Get product for price info
-            const product = await prisma.product.findUnique({
-                where: { id: item.productId },
-            })
-
+            const product = productsById.get(item.productId)
             if (!product) {
-                console.error(`[registerReturn] Product not found: ${item.productId}`)
-                continue
+                throw new Error(`Producto no encontrado: ${item.productId}`)
             }
 
-            const damageDiff = item.returnedDamaged - currentItem.returnedDamaged
-
-            // Calculate cost (using the NEW total damaged amount for display, or the diff? 
-            // The return-form shows total damage for the event. 
-            // But we want to return the TOTAL cost of this return. 
-            // If we are editing, maybe we should return the NEW total cost? Yes.
             if (item.returnedDamaged > 0) {
                 totalDamageCost += item.returnedDamaged * product.priceReplacement
             }
 
-            // Update product inventory if damage quantity changed
-            if (damageDiff !== 0) {
-                await prisma.product.update({
-                    where: { id: item.productId },
-                    data: {
-                        quantityDamaged: {
-                            increment: damageDiff // Can be negative if correcting a mistake
+            return {
+                productId: item.productId,
+                returnedGood: item.returnedGood,
+                returnedDamaged: item.returnedDamaged,
+                damageDiff: item.returnedDamaged - currentItem.returnedDamaged,
+            }
+        })
+
+        const wasCompleted = COMPLETED_EVENT_STATUSES.includes(existingEvent.status as (typeof COMPLETED_EVENT_STATUSES)[number])
+
+        await prisma.$transaction(async (tx) => {
+            await Promise.all(updateSpecs.map(spec =>
+                tx.eventItem.update({
+                    where: {
+                        eventId_productId: {
+                            eventId,
+                            productId: spec.productId,
                         }
+                    },
+                    data: {
+                        returnedGood: spec.returnedGood,
+                        returnedDamaged: spec.returnedDamaged,
                     }
                 })
+            ))
+
+            const damageUpdates = updateSpecs.filter(spec => spec.damageDiff !== 0)
+            if (damageUpdates.length > 0) {
+                await Promise.all(damageUpdates.map(spec =>
+                    tx.product.update({
+                        where: { id: spec.productId },
+                        data: {
+                            quantityDamaged: {
+                                increment: spec.damageDiff
+                            }
+                        }
+                    })
+                ))
             }
 
-            // Update EventItem
-            const updateResult = await prisma.eventItem.updateMany({
-                where: {
-                    eventId: eventId,
-                    productId: item.productId,
-                },
-                data: {
-                    returnedGood: item.returnedGood,
-                    returnedDamaged: item.returnedDamaged,
-                },
-            })
-            console.log(`[registerReturn] Update result for ${item.productId}: ${updateResult.count} records updated`)
-        }
-
-        // Update event status to COMPLETED if not already
-        // If it was already completed, we just stay completed.
-        const previousStatus = existingEvent.status
-
-        if (previousStatus !== 'COMPLETADO') {
-            await prisma.$transaction(async (tx) => {
+            if (!wasCompleted) {
                 await tx.event.update({
                     where: { id: eventId },
                     data: { status: 'COMPLETADO' },
                 })
+            }
 
-                const session = await auth()
-                await tx.eventHistory.create({
-                    data: {
-                        eventId: eventId,
-                        previousStatus: previousStatus,
-                        newStatus: 'COMPLETADO',
-                        changedBy: session?.user?.email || 'Sistema',
-                        reason: 'Devolución procesada'
-                    }
-                })
-            })
-        } else {
-            // Log edit
-            const session = await auth()
-            await prisma.eventHistory.create({
+            await tx.eventHistory.create({
                 data: {
-                    eventId: eventId,
-                    previousStatus: 'COMPLETADO',
+                    eventId,
+                    previousStatus: wasCompleted ? 'COMPLETADO' : existingEvent.status,
                     newStatus: 'COMPLETADO',
                     changedBy: session?.user?.email || 'Sistema',
-                    reason: 'Actualización de devolución'
+                    reason: wasCompleted ? 'Actualización de devolución' : 'Devolución procesada'
                 }
             })
-        }
+        })
 
         revalidatePath(`/events/${eventId}`)
         revalidatePath('/events')
@@ -743,13 +837,16 @@ export async function registerReturn(eventId: string, items: ReturnItem[]) {
 }
 
 const getCachedEvents = unstable_cache(
-    async () => {
-        const events = await prisma.event.findMany({
-            orderBy: { startDate: 'desc' },
-            include: { _count: { select: { items: true } } }
-        })
-        return events
-    },
+    async () => prisma.event.findMany({
+        orderBy: { startDate: 'desc' },
+        select: {
+            id: true,
+            name: true,
+            startDate: true,
+            endDate: true,
+            status: true,
+        }
+    }),
     ['events-list'],
     { revalidate: 30 }
 )
@@ -768,11 +865,7 @@ export async function getEventById(id: string) {
     try {
         const event = await prisma.event.findUnique({
             where: { id },
-            include: {
-                items: { include: { product: true } },
-                client: true,
-                history: { orderBy: { createdAt: 'desc' } }
-            },
+            select: eventDetailSelect,
         })
         if (!event) return { success: false, error: 'Evento no encontrado' }
         return { success: true, data: event }
@@ -883,16 +976,41 @@ async function _getDashboardStatsInternal(filters?: {
             statsStartDate.setMonth(statsStartDate.getMonth() - 5)
         }
 
+        const startDateRange = dateFilter.startDate as DateRangeFilter | undefined
+        const endDateRange = dateFilterByEndDate.endDate as DateRangeFilter | undefined
+
+        const monthlyEventWhere = buildWhereClause([
+            Prisma.sql`e."startDate" >= ${statsStartDate}`,
+            Prisma.sql`e.status NOT IN (${Prisma.join(CANCELLED_EVENT_STATUSES)})`,
+            ...buildSqlRangeConditions(Prisma.sql`e."startDate"`, startDateRange),
+        ])
+
+        const completedRevenueWhere = buildWhereClause([
+            Prisma.sql`e.status IN (${Prisma.join(COMPLETED_EVENT_STATUSES)})`,
+            ...buildSqlRangeConditions(Prisma.sql`e."endDate"`, endDateRange),
+        ])
+
+        const projectedRevenueWhere = buildWhereClause([
+            Prisma.sql`e.status IN (${Prisma.join(ACTIVE_EVENT_STATUSES)})`,
+            ...buildSqlRangeConditions(Prisma.sql`e."startDate"`, startDateRange),
+        ])
+
+        const monthlyRevenueWhere = buildWhereClause([
+            Prisma.sql`e.status IN (${Prisma.join(COMPLETED_EVENT_STATUSES)})`,
+            Prisma.sql`e."endDate" >= ${statsStartDate}`,
+            ...buildSqlRangeConditions(Prisma.sql`e."endDate"`, endDateRange),
+        ])
+
         // Run all independent queries in parallel
         const [
             activeReservations,
             products,
             pendingReturns,
             recentEvents,
-            allEvents,
-            completedEvents,
-            activeEvents,
-            completedEventsInRange,
+            monthlyEventRows,
+            revenueTotals,
+            projectedRevenueRows,
+            monthlyRevenueRows,
             totalClients,
             activeClients,
             topClientsGrouped,
@@ -903,7 +1021,7 @@ async function _getDashboardStatsInternal(filters?: {
         ] = await Promise.all([
             // 1. Active reservations count
             prisma.event.count({
-                where: { status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] }, ...dateFilter }
+                where: { status: { in: [...ACTIVE_EVENT_STATUSES] }, ...dateFilter }
             }),
             // 2. All products (for inventory totals)
             prisma.product.findMany({
@@ -911,39 +1029,64 @@ async function _getDashboardStatsInternal(filters?: {
             }),
             // 3. Pending returns count
             prisma.event.count({
-                where: { endDate: { lte: now }, status: { notIn: ['COMPLETADO', 'COMPLETED'] }, ...dateFilterByEndDate }
+                where: { endDate: { lte: now }, status: { notIn: [...CLOSED_EVENT_STATUSES] }, ...dateFilterByEndDate }
             }),
             // 4. Upcoming events (next 5)
             prisma.event.findMany({
                 take: 5,
                 orderBy: { startDate: 'asc' },
-                where: { status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] }, startDate: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } }
+                where: { status: { in: [...ACTIVE_EVENT_STATUSES] }, startDate: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
+                select: {
+                    id: true,
+                    name: true,
+                    startDate: true,
+                    status: true,
+                }
             }),
             // 5. Events for monthly chart
-            prisma.event.findMany({
-                where: { startDate: { gte: statsStartDate }, status: { not: 'CANCELLED' }, ...dateFilter },
-                select: { startDate: true }
-            }),
-            // 6. Completed events with items (for revenue)
-            prisma.event.findMany({
-                where: { status: { in: ['COMPLETADO', 'COMPLETED'] }, ...dateFilterByEndDate },
-                include: { items: { include: { product: { select: { priceUnit: true, priceReplacement: true } } } } }
-            }),
-            // 7. Active events with items (for projected revenue)
-            prisma.event.findMany({
-                where: { status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] }, ...dateFilter },
-                include: { items: { include: { product: { select: { priceUnit: true } } } } }
-            }),
-            // 8. Completed events in range for monthly revenue chart
-            prisma.event.findMany({
-                where: { status: { in: ['COMPLETADO', 'COMPLETED'] }, endDate: { gte: statsStartDate }, ...dateFilterByEndDate },
-                select: { endDate: true, items: { include: { product: { select: { priceUnit: true, priceReplacement: true } } } } }
-            }),
+            prisma.$queryRaw<MonthlyCountRow[]>`
+                SELECT DATE_TRUNC('month', e."startDate") AS month,
+                       COUNT(*)::int AS total
+                FROM "Event" e
+                ${monthlyEventWhere}
+                GROUP BY 1
+            `,
+            // 6. Revenue totals
+            prisma.$queryRaw<DashboardQueryRow[]>`
+                SELECT COALESCE(SUM(ei.quantity * p."priceUnit"), 0)::float AS "totalRevenue",
+                       COALESCE(SUM(CASE
+                           WHEN ei."damageRestored" = false THEN ei."returnedDamaged" * p."priceReplacement"
+                           ELSE 0
+                       END), 0)::float AS "totalDamageCost"
+                FROM "Event" e
+                JOIN "EventItem" ei ON ei."eventId" = e.id
+                JOIN "Product" p ON p.id = ei."productId"
+                ${completedRevenueWhere}
+            `,
+            // 7. Active projected revenue
+            prisma.$queryRaw<DashboardQueryRow[]>`
+                SELECT COALESCE(SUM(ei.quantity * p."priceUnit"), 0)::float AS "totalRevenue",
+                       0::float AS "totalDamageCost"
+                FROM "Event" e
+                JOIN "EventItem" ei ON ei."eventId" = e.id
+                JOIN "Product" p ON p.id = ei."productId"
+                ${projectedRevenueWhere}
+            `,
+            // 8. Monthly revenue chart
+            prisma.$queryRaw<MonthlyRevenueRow[]>`
+                SELECT DATE_TRUNC('month', e."endDate") AS month,
+                       COALESCE(SUM((ei.quantity * p."priceUnit") + (ei."returnedDamaged" * p."priceReplacement")), 0)::float AS total
+                FROM "Event" e
+                JOIN "EventItem" ei ON ei."eventId" = e.id
+                JOIN "Product" p ON p.id = ei."productId"
+                ${monthlyRevenueWhere}
+                GROUP BY 1
+            `,
             // 9. Total clients count
             prisma.client.count(),
             // 10. Active clients count (use count instead of findMany+length)
             prisma.client.count({
-                where: { events: { some: { status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] }, ...dateFilter } } }
+                where: { events: { some: { status: { in: [...ACTIVE_EVENT_STATUSES] }, ...dateFilter } } }
             }),
             // 11. Top clients by event count using groupBy (avoids fetching ALL clients + ALL their events)
             prisma.event.groupBy({
@@ -963,15 +1106,15 @@ async function _getDashboardStatsInternal(filters?: {
             prisma.eventItem.groupBy({
                 by: ['productId'],
                 _sum: { quantity: true },
-                where: { event: { status: { in: ['SIN_CONFIRMAR', 'RESERVADO', 'DESPACHADO'] } } }
+                where: { event: { status: { in: [...ACTIVE_EVENT_STATUSES] } } }
             }),
             // 14. Completed events count
             prisma.event.count({
-                where: { status: { in: ['COMPLETADO', 'COMPLETED'] }, ...dateFilterByEndDate }
+                where: { status: { in: [...COMPLETED_EVENT_STATUSES] }, ...dateFilterByEndDate }
             }),
             // 15. Cancelled events count
             prisma.event.count({
-                where: { status: 'CANCELLED', ...dateFilterByEndDate }
+                where: { status: { in: [...CANCELLED_EVENT_STATUSES] }, ...dateFilterByEndDate }
             }),
         ])
 
@@ -997,27 +1140,17 @@ async function _getDashboardStatsInternal(filters?: {
             const key = d.toLocaleString('es-MX', { month: 'short', year: filters?.year ? undefined : 'numeric' })
             monthlyStatsMap.set(key, 0)
         }
-        allEvents.forEach(event => {
-            const key = event.startDate.toLocaleString('es-MX', { month: 'short', year: filters?.year ? undefined : 'numeric' })
-            if (monthlyStatsMap.has(key)) monthlyStatsMap.set(key, monthlyStatsMap.get(key)! + 1)
+        monthlyEventRows.forEach(row => {
+            const key = new Date(row.month).toLocaleString('es-MX', { month: 'short', year: filters?.year ? undefined : 'numeric' })
+            if (monthlyStatsMap.has(key)) monthlyStatsMap.set(key, Number(row.total))
         })
         const monthlyStats = Array.from(monthlyStatsMap.entries())
             .map(([name, value], index) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value, fill: `var(--chart-${(index % 5) + 1})` }))
 
         // Revenue
-        let totalRevenue = 0
-        let totalDamageCost = 0
-        completedEvents.forEach(event => {
-            event.items.forEach(item => {
-                totalRevenue += item.quantity * item.product.priceUnit
-                if (!(item as any).damageRestored) totalDamageCost += item.returnedDamaged * item.product.priceReplacement
-            })
-        })
-
-        let projectedRevenue = 0
-        activeEvents.forEach(event => {
-            event.items.forEach(item => { projectedRevenue += item.quantity * item.product.priceUnit })
-        })
+        const totalRevenue = Number(revenueTotals[0]?.totalRevenue ?? 0)
+        const totalDamageCost = Number(revenueTotals[0]?.totalDamageCost ?? 0)
+        const projectedRevenue = Number(projectedRevenueRows[0]?.totalRevenue ?? 0)
 
         // Monthly revenue chart
         const monthlyRevenueMap = new Map<string, number>()
@@ -1027,11 +1160,10 @@ async function _getDashboardStatsInternal(filters?: {
             const key = d.toLocaleString('es-MX', { month: 'short', year: filters?.year ? undefined : 'numeric' })
             monthlyRevenueMap.set(key, 0)
         }
-        completedEventsInRange.forEach(event => {
-            const key = event.endDate.toLocaleString('es-MX', { month: 'short', year: filters?.year ? undefined : 'numeric' })
+        monthlyRevenueRows.forEach(row => {
+            const key = new Date(row.month).toLocaleString('es-MX', { month: 'short', year: filters?.year ? undefined : 'numeric' })
             if (monthlyRevenueMap.has(key)) {
-                const revenue = event.items.reduce((acc, item) => acc + (item.quantity * item.product.priceUnit) + (item.returnedDamaged * item.product.priceReplacement), 0)
-                monthlyRevenueMap.set(key, monthlyRevenueMap.get(key)! + revenue)
+                monthlyRevenueMap.set(key, Number(row.total))
             }
         })
         const monthlyRevenue = Array.from(monthlyRevenueMap.entries())
@@ -1064,7 +1196,7 @@ async function _getDashboardStatsInternal(filters?: {
         const totalInUse = currentlyInUseAgg.reduce((acc, r) => acc + (r._sum.quantity ?? 0), 0)
         const utilizationRate = totalInventory > 0 ? (totalInUse / totalInventory) * 100 : 0
 
-        const averageEventValue = completedEvents.length > 0 ? totalRevenue / completedEvents.length : 0
+        const averageEventValue = completedEventsCount > 0 ? totalRevenue / completedEventsCount : 0
 
         return {
             success: true,
@@ -1317,8 +1449,6 @@ export async function updateUser(userId: string, data: {
 }
 
 // ==================== Event Status Management ====================
-
-import { EventStatus, canTransition } from './event-status'
 
 export async function updateEventStatus(eventId: string, newStatus: EventStatus) {
     try {
