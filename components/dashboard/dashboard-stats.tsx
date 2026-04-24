@@ -52,6 +52,15 @@ export function DashboardStats({ data }: DashboardStatsProps) {
         return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount)
     }
 
+    const formatAxisCurrency = (amount: number) => {
+        return new Intl.NumberFormat('es-MX', {
+            style: 'currency',
+            currency: 'MXN',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+        }).format(amount)
+    }
+
     return (
         <div className="space-y-6">
             {/* Main Stats Row */}
@@ -287,7 +296,7 @@ export function DashboardStats({ data }: DashboardStatsProps) {
                                 </ResponsiveContainer>
                             ) : (
                                 <ResponsiveContainer width="99%" height={300} minWidth={0} minHeight={0}>
-                                    <LineChart data={data.monthlyRevenue || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                    <LineChart data={data.monthlyRevenue || []} margin={{ top: 10, right: 10, left: 12, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
                                         <XAxis
                                             dataKey="name"
@@ -302,7 +311,8 @@ export function DashboardStats({ data }: DashboardStatsProps) {
                                             fontSize={12}
                                             tickLine={false}
                                             axisLine={false}
-                                            tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                                            width={110}
+                                            tickFormatter={(value) => formatAxisCurrency(Number(value))}
                                         />
                                         <Tooltip
                                             cursor={{ stroke: 'var(--muted)', strokeWidth: 1 }}

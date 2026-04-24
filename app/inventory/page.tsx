@@ -15,7 +15,8 @@ export default async function InventoryPage() {
 
     const { success, data: products, error } = await getProducts({
         startDate,
-        endDate
+        endDate,
+        includeInactive: true,
     })
 
     if (!success || !products) {

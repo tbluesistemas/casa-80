@@ -1,7 +1,7 @@
 'use server'
 
 import { prisma } from '@/lib/prisma'
-import { revalidatePath, unstable_cache } from 'next/cache'
+import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache'
 import { sendReservationEmail } from '@/lib/email'
 import { getCurrentRole } from '@/lib/auth'
 import { signIn, auth } from '@/auth'
@@ -17,6 +17,7 @@ import {
     EventStatus,
     canTransition
 } from './event-status'
+import { getPrimaryProductImage, sanitizeProductImageUrls } from './product-images'
 
 type DateRangeFilter = {
     gte?: Date
@@ -40,6 +41,8 @@ type MonthlyRevenueRow = {
 
 const inventoryProductSelect = {
     id: true,
+    inventoryNumber: true,
+    active: true,
     code: true,
     name: true,
     category: true,
@@ -47,6 +50,7 @@ const inventoryProductSelect = {
     novedad: true,
     description: true,
     imageUrl: true,
+    imageUrls: true,
     totalQuantity: true,
     priceUnit: true,
     priceReplacement: true,
@@ -109,13 +113,23 @@ const eventDetailSelect = {
     }
 } satisfies Prisma.EventSelect
 
+const getCachedActiveProductCatalog = unstable_cache(
+    async () => prisma.product.findMany({
+        where: { active: true },
+        select: inventoryProductSelect,
+        orderBy: { inventoryNumber: 'asc' }
+    }),
+    ['product-catalog-active'],
+    { revalidate: 30, tags: ['products'] }
+)
+
 const getCachedProductCatalog = unstable_cache(
     async () => prisma.product.findMany({
         select: inventoryProductSelect,
-        orderBy: { name: 'asc' }
+        orderBy: { inventoryNumber: 'asc' }
     }),
-    ['product-catalog'],
-    { revalidate: 30 }
+    ['product-catalog-all'],
+    { revalidate: 30, tags: ['products'] }
 )
 
 function getDateCacheKey(date?: Date) {
@@ -206,6 +220,7 @@ async function checkAvailability(
 export async function getProducts(filters?: {
     startDate?: Date
     endDate?: Date
+    includeInactive?: boolean
 }) {
     try {
         const allocationRowsPromise = (filters?.startDate && filters?.endDate)
@@ -227,7 +242,7 @@ export async function getProducts(filters?: {
             : Promise.resolve([])
 
         const [products, allocationRows] = await Promise.all([
-            getCachedProductCatalog(),
+            filters?.includeInactive ? getCachedProductCatalog() : getCachedActiveProductCatalog(),
             allocationRowsPromise,
         ])
 
@@ -242,7 +257,9 @@ export async function getProducts(filters?: {
             return {
                 ...product,
                 quantityDamaged: damaged,
-                availableQuantity: Math.max(0, product.totalQuantity - damaged - allocated),
+                availableQuantity: product.active
+                    ? Math.max(0, product.totalQuantity - damaged - allocated)
+                    : 0,
                 allocatedQuantity: allocated
             }
         })
@@ -265,7 +282,9 @@ export async function updateProduct(id: string, data: {
     priceUnit?: number
     priceReplacement?: number
     imageUrl?: string | null
+    imageUrls?: string[]
     code?: string | null
+    active?: boolean
 }) {
     const role = await getCurrentRole()
     if (role !== 'ADMIN') {
@@ -273,10 +292,16 @@ export async function updateProduct(id: string, data: {
     }
 
     try {
+        const imageUrls = sanitizeProductImageUrls(data.imageUrls, data.imageUrl)
         const product = await prisma.product.update({
             where: { id },
-            data
+            data: {
+                ...data,
+                imageUrl: getPrimaryProductImage({ imageUrls }),
+                imageUrls,
+            }
         })
+        revalidateTag('products')
         revalidatePath('/inventory')
         return { success: true, data: product }
     } catch (error) {
@@ -295,13 +320,16 @@ export async function createProduct(data: {
     priceUnit?: number
     priceReplacement?: number
     imageUrl?: string | null
+    imageUrls?: string[]
     code?: string
+    active?: boolean
 }) {
     const role = await getCurrentRole()
     if (role !== 'ADMIN') {
         return { success: false, error: 'No autorizado: Permisos insuficientes' }
     }
     try {
+        const imageUrls = sanitizeProductImageUrls(data.imageUrls, data.imageUrl)
         const product = await prisma.product.create({
             data: {
                 name: data.name,
@@ -312,10 +340,13 @@ export async function createProduct(data: {
                 totalQuantity: data.totalQuantity || 0,
                 priceUnit: data.priceUnit || 0,
                 priceReplacement: data.priceReplacement || 0,
-                imageUrl: data.imageUrl || null,
-                code: data.code || null,
+                imageUrl: getPrimaryProductImage({ imageUrls }),
+                imageUrls,
+                code: data.code?.trim() || null,
+                active: data.active ?? true,
             }
         })
+        revalidateTag('products')
         revalidatePath('/inventory')
         return { success: true, data: product }
     } catch (error) {
@@ -1535,7 +1566,7 @@ export async function getInventoryForExport() {
                     }
                 }
             },
-            orderBy: { name: 'asc' }
+            orderBy: { inventoryNumber: 'asc' }
         })
 
         return { success: true, data: products }
@@ -1615,6 +1646,7 @@ export async function getDamagedProductsForExport(filters?: {
 // ==================== Import Actions ====================
 
 export async function importInventoryFromExcel(products: {
+    inventoryNumber?: number
     id?: string
     name: string
     category?: string
@@ -1626,6 +1658,7 @@ export async function importInventoryFromExcel(products: {
     priceUnit: number
     priceReplacement: number
     code?: string
+    active?: boolean
 }[]) {
     try {
         const session = await auth()
@@ -1643,7 +1676,13 @@ export async function importInventoryFromExcel(products: {
             try {
                 let existing = null;
 
-                if (productData.id && productData.id.trim() !== '') {
+                if (productData.inventoryNumber) {
+                    existing = await prisma.product.findUnique({
+                        where: { inventoryNumber: productData.inventoryNumber }
+                    })
+                }
+
+                if (!existing && productData.id && productData.id.trim() !== '') {
                     existing = await prisma.product.findUnique({ where: { id: productData.id } })
                 }
 
@@ -1658,9 +1697,11 @@ export async function importInventoryFromExcel(products: {
                     novedad: productData.novedad || null,
                     description: productData.description || null,
                     totalQuantity: productData.totalQuantity || 0,
+                    quantityDamaged: productData.quantityDamaged || 0,
                     priceUnit: productData.priceUnit || 0,
                     priceReplacement: productData.priceReplacement || 0,
-                    code: productData.code || null,
+                    code: productData.code?.trim() || null,
+                    ...(productData.active !== undefined ? { active: productData.active } : {}),
                 };
 
                 if (existing) {
@@ -1681,6 +1722,7 @@ export async function importInventoryFromExcel(products: {
             }
         }
 
+        revalidateTag('products')
         revalidatePath('/inventory')
 
         return {
@@ -1718,10 +1760,66 @@ export async function deleteProduct(id: string) {
             where: { id }
         })
 
+        revalidateTag('products')
         revalidatePath('/inventory')
         return { success: true }
     } catch (error) {
         console.error('Error deleting product:', error)
         return { success: false, error: 'Error al eliminar producto' }
+    }
+}
+
+export async function toggleProductActive(productId: string) {
+    const role = await getCurrentRole()
+    if (role !== 'ADMIN') {
+        return { success: false, error: 'No autorizado: Permisos insuficientes' }
+    }
+
+    try {
+        const product = await prisma.product.findUnique({
+            where: { id: productId },
+            select: {
+                id: true,
+                name: true,
+                active: true,
+            }
+        })
+
+        if (!product) {
+            return { success: false, error: 'Producto no encontrado' }
+        }
+
+        const nextActive = !product.active
+        const upcomingEventCount = await prisma.eventItem.count({
+            where: {
+                productId,
+                event: {
+                    status: { in: [...INVENTORY_BLOCKING_EVENT_STATUSES] },
+                    endDate: { gte: new Date() }
+                }
+            }
+        })
+
+        await prisma.product.update({
+            where: { id: productId },
+            data: { active: nextActive }
+        })
+
+        revalidateTag('products')
+        revalidatePath('/inventory')
+        revalidatePath('/events')
+        revalidatePath('/events/new')
+
+        return {
+            success: true,
+            data: {
+                active: nextActive,
+                upcomingEventCount,
+                name: product.name,
+            }
+        }
+    } catch (error) {
+        console.error('Error toggling product active status:', error)
+        return { success: false, error: 'Error al actualizar el estado del producto' }
     }
 }

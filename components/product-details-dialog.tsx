@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useMemo, useState } from 'react'
 import {
     Dialog,
     DialogContent,
@@ -8,17 +9,22 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Package, DollarSign, Archive, AlertTriangle } from "lucide-react"
+import { Package } from "lucide-react"
 import { format } from "date-fns"
 import Image from "next/image"
+import { getPrimaryProductImage, normalizeProductImageUrls } from "@/lib/product-images"
 
 interface ProductDetailsProps {
     product: {
         id: string
+        inventoryNumber?: number
+        active?: boolean
+        code?: string | null
         name: string
         description?: string | null
         category?: string | null
         imageUrl?: string | null
+        imageUrls?: string[]
         totalQuantity: number
         quantityDamaged?: number
         priceUnit?: number
@@ -29,77 +35,94 @@ interface ProductDetailsProps {
 }
 
 export function ProductDetailsDialog({ product, children }: ProductDetailsProps) {
+    const [open, setOpen] = useState(false)
+    const images = useMemo(() => normalizeProductImageUrls(product), [product])
+    const primaryImage = getPrimaryProductImage(product)
+    const [selectedImage, setSelectedImage] = useState(primaryImage)
+
+    useEffect(() => {
+        if (open) {
+            setSelectedImage(primaryImage)
+        }
+    }, [open, primaryImage, product.id])
+
     return (
-        <Dialog>
+        <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild className="cursor-pointer hover:opacity-80 transition-opacity">
                 {children}
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
+                    <DialogTitle className="flex items-center gap-2 flex-wrap">
                         {product.name}
-                        {product.category && <Badge variant="secondary">{product.category}</Badge>}
+                        {product.category ? <Badge variant="secondary">{product.category}</Badge> : null}
+                        {images.length > 1 ? <Badge variant="outline">{images.length} fotos</Badge> : null}
                     </DialogTitle>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
-                    {product.imageUrl ? (
-                        <div className="relative w-full aspect-square rounded-lg overflow-hidden border bg-muted">
-                            <Image 
-                                src={product.imageUrl} 
-                                alt={product.name} 
-                                fill 
-                                className="object-cover"
-                            />
-                        </div>
-                    ) : (
-                        <div className="flex justify-center py-4 bg-muted/20 rounded-lg border border-dashed">
-                            <Package className="h-16 w-16 text-muted-foreground/50" />
-                        </div>
-                    )}
-
-                    {product.description && (
-                        <div className="text-sm text-muted-foreground">
-                            {product.description}
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="flex flex-col p-3 bg-red-50 rounded-lg border border-red-100">
-                            <div className="flex items-center gap-2 text-red-600 mb-1">
-                                <DollarSign className="h-4 w-4" />
-                                <span className="text-xs font-semibold uppercase">Valor Daño</span>
-                            </div>
-                            <span className="text-xl font-bold text-red-700">
-                                ${product.priceReplacement.toLocaleString()}
-                            </span>
-                        </div>
-
-                        <div className="flex flex-col p-3 bg-orange-50 rounded-lg border border-orange-100">
-                            <div className="flex items-center gap-2 text-orange-600 mb-1">
-                                <AlertTriangle className="h-4 w-4" />
-                                <span className="text-xs font-semibold uppercase">Cant. Dañada</span>
-                            </div>
-                            <span className="text-xl font-bold text-orange-700">
-                                {product.quantityDamaged || 0}
-                            </span>
-                        </div>
-
-                        <div className="flex flex-col p-3 bg-blue-50 rounded-lg border border-blue-100">
-                            <div className="flex items-center gap-2 text-blue-600 mb-1">
-                                <Archive className="h-4 w-4" />
-                                <span className="text-xs font-semibold uppercase">Stock Total</span>
-                            </div>
-                            <span className="text-xl font-bold text-blue-700">
-                                {product.totalQuantity}
-                            </span>
-                        </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                        {product.inventoryNumber ? (
+                            <Badge variant="outline">ID Inventario #{product.inventoryNumber}</Badge>
+                        ) : null}
+                        {product.active === false ? (
+                            <Badge variant="destructive">Deshabilitado</Badge>
+                        ) : null}
+                        {product.code ? (
+                            <Badge variant="secondary">SKU {product.code}</Badge>
+                        ) : null}
                     </div>
 
-                    {product.updatedAt && (
+                    {selectedImage ? (
+                        <div className="relative w-full aspect-square rounded-xl overflow-hidden shadow-sm border bg-muted/30 group">
+                            <Image
+                                src={selectedImage}
+                                alt={product.name}
+                                fill
+                                className="object-cover transition-transform duration-500 group-hover:scale-105"
+                            />
+                            <div className="absolute inset-0 ring-1 ring-inset ring-black/5 rounded-xl pointer-events-none" />
+                        </div>
+                    ) : (
+                        <div className="flex justify-center py-8 bg-muted/20 rounded-xl border border-dashed">
+                            <Package className="h-16 w-16 text-muted-foreground/30" />
+                        </div>
+                    )}
+
+                    {images.length > 1 ? (
+                        <div className="grid grid-cols-5 gap-3">
+                            {images.map((url, index) => {
+                                const isSelected = url === selectedImage
+
+                                return (
+                                    <button
+                                        key={`${url}-${index}`}
+                                        type="button"
+                                        onClick={() => setSelectedImage(url)}
+                                        className={`relative aspect-square overflow-hidden rounded-lg transition-all duration-200 ${isSelected ? 'ring-2 ring-primary ring-offset-2 opacity-100' : 'hover:ring-2 hover:ring-primary/50 opacity-60 hover:opacity-100'}`}
+                                    >
+                                        <Image
+                                            src={url}
+                                            alt={`${product.name} ${index + 1}`}
+                                            fill
+                                            className="object-cover"
+                                        />
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    ) : null}
+
+                    {product.description ? (
+                        <div className="text-sm text-muted-foreground mt-2">
+                            {product.description}
+                        </div>
+                    ) : null}
+
+                    {product.updatedAt ? (
                         <div className="text-xs text-muted-foreground text-center pt-2">
                             Actualizado: {format(new Date(product.updatedAt), "dd/MM/yyyy HH:mm")}
                         </div>
-                    )}
+                    ) : null}
                 </div>
             </DialogContent>
         </Dialog>

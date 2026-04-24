@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import {
     Table,
     TableBody,
@@ -22,15 +23,18 @@ import { EditProductDialog } from "@/components/inventory/edit-product-dialog"
 import { CreateProductDialog } from "@/components/inventory/create-product-dialog"
 import { DeleteProductDialog } from "@/components/inventory/delete-product-dialog"
 import Image from 'next/image'
-import { deleteProduct } from "@/lib/actions"
+import { deleteProduct, toggleProductActive } from "@/lib/actions"
 import { format } from "date-fns"
-import { cn, formatCurrency } from "@/lib/utils"
-import { Search, Eye, EyeOff, DollarSign, AlertTriangle, Trash2, X, ArrowUpDown, ImageIcon } from "lucide-react"
+import { formatCurrency } from "@/lib/utils"
+import { Search, Eye, EyeOff, DollarSign, AlertTriangle, Trash2, X, ArrowUpDown, ImageIcon, Loader2, Power, PowerOff } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
+import { getPrimaryProductImage, normalizeProductImageUrls } from "@/lib/product-images"
 
 interface Product {
     id: string
+    inventoryNumber: number
+    active: boolean
     code?: string | null
     name: string
     category?: string | null
@@ -45,6 +49,7 @@ interface Product {
     createdAt?: string | Date
     availableQuantity?: number
     imageUrl?: string | null
+    imageUrls?: string[]
 }
 
 import { useAuth } from '@/components/auth-provider'
@@ -55,13 +60,23 @@ type SortOption =
     | 'price-asc' | 'price-desc'
     | 'date-asc' | 'date-desc'
 
+function getProductCardImage(product: Product) {
+    return getPrimaryProductImage(product)
+}
+
+function getProductImageCount(product: Product) {
+    return normalizeProductImageUrls(product).length
+}
+
 export function InventoryClient({ products }: { products: Product[] }) {
+    const router = useRouter()
     const { role } = useAuth()
     const [searchQuery, setSearchQuery] = useState('')
     const [categoryFilter, setCategoryFilter] = useState<string>('all')
     const [sortBy, setSortBy] = useState<SortOption>('name-asc')
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [deletingBulk, setDeletingBulk] = useState(false)
+    const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set())
     const [displayLimit, setDisplayLimit] = useState(50)
 
     const totalInventoryValue = useMemo(() => {
@@ -78,6 +93,8 @@ export function InventoryClient({ products }: { products: Product[] }) {
     const filteredAndSorted = useMemo(() => {
         const filtered = products.filter(product => {
             const matchesSearch =
+                product.inventoryNumber?.toString().includes(searchQuery.trim()) ||
+                product.code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 product.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 product.category?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -152,6 +169,34 @@ export function InventoryClient({ products }: { products: Product[] }) {
         } else {
             toast.success('Productos eliminados correctamente')
         }
+        router.refresh()
+    }
+
+    const handleToggleActive = async (product: Product) => {
+        setTogglingIds(prev => new Set(prev).add(product.id))
+
+        const result = await toggleProductActive(product.id)
+
+        setTogglingIds(prev => {
+            const next = new Set(prev)
+            next.delete(product.id)
+            return next
+        })
+
+        if (!result.success || !result.data) {
+            toast.error(result.error || 'No se pudo actualizar el estado del producto')
+            return
+        }
+
+        if (!result.data.active && result.data.upcomingEventCount > 0) {
+            toast.warning(
+                `${result.data.name} quedó deshabilitado. Tiene ${result.data.upcomingEventCount} reserva(s) activa(s), así que ya no saldrá para nuevas reservas.`
+            )
+        } else {
+            toast.success(result.data.active ? 'Producto reactivado' : 'Producto deshabilitado')
+        }
+
+        router.refresh()
     }
 
     return (
@@ -263,8 +308,15 @@ export function InventoryClient({ products }: { products: Product[] }) {
                             <div className="col-span-2 text-center text-muted-foreground py-12">
                                 {searchQuery || categoryFilter !== 'all' ? 'No se encontraron productos con esos filtros.' : 'No hay productos registrados.'}
                             </div>
-                        ) : visibleProducts.map((product) => (
-                            <div key={product.id} className="relative flex flex-col rounded-xl border bg-card shadow-sm overflow-hidden transition-all hover:shadow-md">
+                        ) : visibleProducts.map((product) => {
+                            const productImage = getProductCardImage(product)
+                            const imageCount = getProductImageCount(product)
+
+                            return (
+                                <div
+                                    key={product.id}
+                                    className={`relative flex flex-col rounded-xl border bg-card shadow-sm overflow-hidden transition-all hover:shadow-md ${product.active ? '' : 'opacity-70 border-dashed border-red-300 bg-red-50/40'}`}
+                                >
                                 <div className="absolute top-2 left-2 z-10">
                                     <Checkbox
                                         checked={selectedIds.has(product.id)}
@@ -276,16 +328,21 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                     {role === 'ADMIN' && <DeleteProductDialog productId={product.id} productName={product.name} />}
                                 </div>
                                 
-                                {product.imageUrl ? (
+                                {productImage ? (
                                     <ProductDetailsDialog product={product}>
                                         <div className="relative w-full aspect-square bg-muted border-b cursor-pointer transition-opacity hover:opacity-90">
                                             <Image
-                                                src={product.imageUrl}
+                                                src={productImage}
                                                 alt={product.name}
                                                 fill
                                                 className="object-cover"
                                                 sizes="(max-width: 768px) 50vw, 33vw"
                                             />
+                                            {imageCount > 1 && (
+                                                <span className="absolute bottom-2 right-2 rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-semibold shadow">
+                                                    {imageCount} fotos
+                                                </span>
+                                            )}
                                         </div>
                                     </ProductDetailsDialog>
                                 ) : (
@@ -298,6 +355,23 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                 
                                 <div className="p-3 flex flex-col flex-1 gap-2">
                                     <div>
+                                        <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                                            {product.inventoryNumber ? (
+                                                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                                                    #{product.inventoryNumber}
+                                                </span>
+                                            ) : null}
+                                            {!product.active ? (
+                                                <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                                                    Deshabilitado
+                                                </span>
+                                            ) : null}
+                                            {product.code ? (
+                                                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                                    SKU {product.code}
+                                                </span>
+                                            ) : null}
+                                        </div>
                                         {role === 'ADMIN' ? (
                                             <EditProductDialog product={product}>
                                                 <span className="font-semibold text-primary text-sm hover:underline cursor-pointer line-clamp-2 leading-tight">{product.name}</span>
@@ -328,9 +402,29 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                         <span className="font-medium text-muted-foreground">Unit:</span>
                                         <strong className="text-foreground">{formatCurrency(product.priceUnit || 0)}</strong>
                                     </div>
+                                    {role === 'ADMIN' && (
+                                        <Button
+                                            type="button"
+                                            variant={product.active ? 'outline' : 'secondary'}
+                                            size="sm"
+                                            onClick={() => handleToggleActive(product)}
+                                            disabled={togglingIds.has(product.id)}
+                                            className="mt-2 h-8 text-xs"
+                                        >
+                                            {togglingIds.has(product.id) ? (
+                                                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                            ) : product.active ? (
+                                                <PowerOff className="mr-2 h-3.5 w-3.5" />
+                                            ) : (
+                                                <Power className="mr-2 h-3.5 w-3.5" />
+                                            )}
+                                            {product.active ? 'Deshabilitar' : 'Reactivar'}
+                                        </Button>
+                                    )}
                                 </div>
-                            </div>
-                        ))}
+                                </div>
+                            )
+                        })}
                     </div>
 
                     {/* Desktop: Table */}
@@ -348,7 +442,7 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                         />
                                     </TableHead>
                                     <TableHead className="w-[160px]">Foto</TableHead>
-                                    <TableHead className="w-[100px]">Código</TableHead>
+                                    <TableHead className="w-[140px]">ID Inventario</TableHead>
                                     <TableHead className="w-[140px] max-w-[140px]">Categoría</TableHead>
                                     <TableHead className="min-w-[180px]">Nombre / Descripción</TableHead>
                                     <TableHead className="text-right w-[70px]">Total</TableHead>
@@ -357,13 +451,13 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                     <TableHead className="text-right w-[110px]">Valor Unit.</TableHead>
                                     <TableHead className="text-right w-[100px]">Valor Daño</TableHead>
                                     <TableHead className="text-right w-[120px]">Actualización</TableHead>
-                                    <TableHead className="w-[76px] sticky right-0 bg-background z-10"></TableHead>
+                                    <TableHead className="w-[112px] sticky right-0 bg-background z-10"></TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {visibleProducts.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={11} className="text-center h-24 text-muted-foreground">
+                                        <TableCell colSpan={12} className="text-center h-24 text-muted-foreground">
                                             {searchQuery || categoryFilter !== 'all'
                                                 ? 'No se encontraron productos con esos filtros.'
                                                 : 'No hay productos registrados.'}
@@ -372,11 +466,13 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                 ) : (
                                     visibleProducts.map((product) => {
                                         const isSelected = selectedIds.has(product.id)
+                                        const productImage = getProductCardImage(product)
+                                        const imageCount = getProductImageCount(product)
                                         return (
                                             <TableRow
                                                 key={product.id}
                                                 data-selected={isSelected}
-                                                className={isSelected ? 'bg-primary/5' : ''}
+                                                className={`${isSelected ? 'bg-primary/5' : ''} ${product.active ? '' : 'opacity-70 bg-red-50/40'}`}
                                             >
                                                 <TableCell>
                                                     <Checkbox
@@ -387,15 +483,20 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                                 </TableCell>
                                                 <TableCell className="py-4">
                                                     <ProductDetailsDialog product={product}>
-                                                        {product.imageUrl ? (
+                                                        {productImage ? (
                                                             <div className="relative h-36 w-36 rounded-xl overflow-hidden border-2 bg-muted shadow hover:scale-105 transition-transform origin-left z-20 cursor-pointer">
                                                                 <Image
-                                                                    src={product.imageUrl}
+                                                                    src={productImage}
                                                                     alt={product.name}
                                                                     fill
                                                                     className="object-cover"
                                                                     sizes="144px"
                                                                 />
+                                                                {imageCount > 1 && (
+                                                                    <span className="absolute bottom-2 right-2 rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-semibold shadow">
+                                                                        {imageCount} fotos
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         ) : (
                                                             <div className="h-36 w-36 rounded-xl border-2 bg-muted flex items-center justify-center cursor-pointer hover:bg-muted/80">
@@ -404,12 +505,21 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                                         )}
                                                     </ProductDetailsDialog>
                                                 </TableCell>
-                                                <TableCell className="w-[100px]">
-                                                    {product.code ? (
-                                                        <span className="font-mono text-xs text-muted-foreground">{product.code}</span>
-                                                    ) : (
-                                                        <span className="text-muted-foreground/50 text-xs italic">-</span>
-                                                    )}
+                                                <TableCell className="w-[140px]">
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="font-mono text-sm font-semibold text-foreground">
+                                                            {product.inventoryNumber ? `#${product.inventoryNumber}` : '-'}
+                                                        </span>
+                                                        {product.code ? (
+                                                            <span className="font-mono text-[11px] text-muted-foreground">
+                                                                SKU {product.code}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-muted-foreground/50 text-[11px] italic">
+                                                                Sin SKU
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
 
                                                 <TableCell className="w-[160px] max-w-[160px]">
@@ -436,6 +546,11 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                                                 {product.novedad}
                                                             </span>
                                                         )}
+                                                        {!product.active && (
+                                                            <span className="inline-flex items-center rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-700/10 max-w-full truncate block">
+                                                                Deshabilitado
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>
@@ -443,6 +558,11 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                                         <EditProductDialog product={product}>
                                                             <div className="flex flex-col cursor-pointer">
                                                                 <span className="font-medium text-primary hover:underline underline-offset-2">{product.name}</span>
+                                                                {!product.active && (
+                                                                    <span className="text-[11px] font-medium text-red-600">
+                                                                        Fuera de uso para nuevas reservas
+                                                                    </span>
+                                                                )}
                                                                 {product.description && (
                                                                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
                                                                         {product.description}
@@ -454,6 +574,11 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                                         <ProductDetailsDialog product={product}>
                                                             <div className="flex flex-col cursor-pointer hover:underline decoration-dotted decoration-muted-foreground/50">
                                                                 <span className="font-medium text-primary">{product.name}</span>
+                                                                {!product.active && (
+                                                                    <span className="text-[11px] font-medium text-red-600">
+                                                                        Fuera de uso para nuevas reservas
+                                                                    </span>
+                                                                )}
                                                                 {product.description && (
                                                                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
                                                                         {product.description}
@@ -464,10 +589,12 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                                     )}
                                                 </TableCell>
                                                 <TableCell className="text-right font-bold text-muted-foreground">{product.totalQuantity}</TableCell>
-                                                <TableCell className="text-right font-bold text-green-600">
-                                                    {product.availableQuantity !== undefined
-                                                        ? product.availableQuantity
-                                                        : (product.totalQuantity - (product.quantityDamaged || 0))}
+                                                <TableCell className={`text-right font-bold ${product.active ? 'text-green-600' : 'text-red-600'}`}>
+                                                    {product.active
+                                                        ? (product.availableQuantity !== undefined
+                                                            ? product.availableQuantity
+                                                            : (product.totalQuantity - (product.quantityDamaged || 0)))
+                                                        : 0}
                                                 </TableCell>
                                                 <TableCell className="text-right font-bold text-red-600">
                                                     {product.quantityDamaged || 0}
@@ -481,8 +608,26 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                                 <TableCell className="text-right text-muted-foreground text-xs">
                                                     {format(new Date(product.updatedAt), "dd/MM/yyyy HH:mm")}
                                                 </TableCell>
-                                                <TableCell className="sticky right-0 bg-background">
+                                                <TableCell className={`sticky right-0 ${product.active ? 'bg-background' : 'bg-red-50/40'}`}>
                                                     <div className="flex items-center gap-1 flex-nowrap">
+                                                        {role === 'ADMIN' && (
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => handleToggleActive(product)}
+                                                                disabled={togglingIds.has(product.id)}
+                                                                title={product.active ? 'Deshabilitar producto' : 'Reactivar producto'}
+                                                            >
+                                                                {togglingIds.has(product.id) ? (
+                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                ) : product.active ? (
+                                                                    <PowerOff className="h-4 w-4 text-red-600" />
+                                                                ) : (
+                                                                    <Power className="h-4 w-4 text-emerald-600" />
+                                                                )}
+                                                            </Button>
+                                                        )}
                                                         {role === 'ADMIN' && <DeleteProductDialog productId={product.id} productName={product.name} />}
                                                         <HistoryDialog
                                                             productId={product.id}

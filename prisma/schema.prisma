@@ -25,6 +25,8 @@ model User {
 
 model Product {
   id               String      @id @default(cuid())
+  inventoryNumber  Int         @unique @default(autoincrement())
+  active           Boolean     @default(true)
   code             String?     @unique
   name             String
   category         String?
@@ -32,6 +34,7 @@ model Product {
   novedad          String?
   description      String?
   imageUrl         String?
+  imageUrls        String[]    @default([])
   totalQuantity    Int         @default(0)
   priceUnit        Float       @default(0.0)
   priceReplacement Float       @default(0.0)

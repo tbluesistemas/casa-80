@@ -28,6 +28,7 @@ type Product = {
     description?: string | null
     availableQuantity?: number
     imageUrl?: string | null
+    imageUrls?: string[]
     category?: string | null
     subcategory?: string | null
     novedad?: string | null

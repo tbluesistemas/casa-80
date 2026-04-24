@@ -1,0 +1,16 @@
+
+> temp_app@0.1.0 dev
+> next dev --turbo
+
+   ▲ Next.js 15.5.14 (Turbopack)
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.56.1:3000
+   - Environments: .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+ ○ Compiling middleware ...
+ ✓ Compiled middleware in 1432ms
+ ✓ Ready in 4.8s
+ ○ Compiling / ...

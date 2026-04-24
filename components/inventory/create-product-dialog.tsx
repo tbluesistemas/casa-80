@@ -31,7 +31,7 @@ export function CreateProductDialog() {
         totalQuantity: 0,
         priceUnit: 0,
         priceReplacement: 0,
-        imageUrl: null as string | null,
+        imageUrls: [] as string[],
     })
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -41,8 +41,6 @@ export function CreateProductDialog() {
             toast.error('El nombre del producto es requerido')
             return
         }
-
-
 
         setLoading(true)
 
@@ -56,7 +54,7 @@ export function CreateProductDialog() {
             totalQuantity: formData.totalQuantity,
             priceUnit: formData.priceUnit,
             priceReplacement: formData.priceReplacement,
-            imageUrl: formData.imageUrl,
+            imageUrls: formData.imageUrls,
         })
 
         if (result.success) {
@@ -72,11 +70,12 @@ export function CreateProductDialog() {
                 totalQuantity: 0,
                 priceUnit: 0,
                 priceReplacement: 0,
-                imageUrl: null,
+                imageUrls: [],
             })
         } else {
             toast.error(result.error)
         }
+
         setLoading(false)
     }
 
@@ -88,7 +87,7 @@ export function CreateProductDialog() {
                     Nuevo Producto
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
+            <DialogContent className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Crear Nuevo Producto</DialogTitle>
                 </DialogHeader>
@@ -96,10 +95,11 @@ export function CreateProductDialog() {
                     <div className="grid gap-4 py-4">
                         <div className="flex flex-col md:flex-row gap-6 items-start">
                             <div className="flex flex-col items-center space-y-2 shrink-0">
-                                <Label>Imagen de Referencia</Label>
+                                <Label>Galeria del Producto</Label>
                                 <ImageUpload
-                                    value={formData.imageUrl}
-                                    onChange={(url) => setFormData({ ...formData, imageUrl: url })}
+                                    multiple
+                                    values={formData.imageUrls}
+                                    onMultipleChange={imageUrls => setFormData({ ...formData, imageUrls })}
                                 />
                             </div>
                             <div className="flex-1 space-y-4 w-full">
@@ -108,36 +108,39 @@ export function CreateProductDialog() {
                                     <Input
                                         id="name"
                                         value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
                                         required
                                         placeholder="Ej: Mesa redonda"
                                     />
+                                    <p className="text-xs text-muted-foreground">
+                                        El ID de inventario se asigna automaticamente al guardar.
+                                    </p>
                                 </div>
                                 <div className="grid gap-2">
-                                    <Label htmlFor="code">Código / SKU</Label>
+                                    <Label htmlFor="code">Codigo / SKU (opcional)</Label>
                                     <Input
                                         id="code"
                                         value={formData.code}
-                                        onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                                        onChange={e => setFormData({ ...formData, code: e.target.value })}
                                         placeholder="Ej: MES-RED-01"
                                     />
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="grid gap-2">
-                                        <Label htmlFor="category">Categoría</Label>
+                                        <Label htmlFor="category">Categoria</Label>
                                         <Input
                                             id="category"
                                             value={formData.category}
-                                            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                            onChange={e => setFormData({ ...formData, category: e.target.value })}
                                             placeholder="Ej: Mobiliario"
                                         />
                                     </div>
                                     <div className="grid gap-2">
-                                        <Label htmlFor="subcategory">Subcategoría</Label>
+                                        <Label htmlFor="subcategory">Subcategoria</Label>
                                         <Input
                                             id="subcategory"
                                             value={formData.subcategory}
-                                            onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
+                                            onChange={e => setFormData({ ...formData, subcategory: e.target.value })}
                                             placeholder="Ej: Sillas"
                                         />
                                     </div>
@@ -150,18 +153,18 @@ export function CreateProductDialog() {
                             <Input
                                 id="novedad"
                                 value={formData.novedad}
-                                onChange={(e) => setFormData({ ...formData, novedad: e.target.value })}
+                                onChange={e => setFormData({ ...formData, novedad: e.target.value })}
                                 placeholder="Ej: Nuevo, Renovado..."
                             />
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="description">Descripción</Label>
+                            <Label htmlFor="description">Descripcion</Label>
                             <Textarea
                                 id="description"
                                 value={formData.description}
-                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                onChange={e => setFormData({ ...formData, description: e.target.value })}
                                 rows={3}
-                                placeholder="Descripción del producto..."
+                                placeholder="Descripcion del producto..."
                             />
                         </div>
                         <div className="grid grid-cols-3 gap-4">
@@ -172,7 +175,7 @@ export function CreateProductDialog() {
                                     type="number"
                                     min="0"
                                     value={formData.totalQuantity === 0 ? '' : formData.totalQuantity}
-                                    onChange={(e) => setFormData({ ...formData, totalQuantity: e.target.value === '' ? 0 : parseInt(e.target.value) || 0 })}
+                                    onChange={e => setFormData({ ...formData, totalQuantity: e.target.value === '' ? 0 : parseInt(e.target.value, 10) || 0 })}
                                     placeholder="0"
                                 />
                             </div>
@@ -184,19 +187,19 @@ export function CreateProductDialog() {
                                     min="0"
                                     step="0.01"
                                     value={formData.priceUnit === 0 ? '' : formData.priceUnit}
-                                    onChange={(e) => setFormData({ ...formData, priceUnit: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
+                                    onChange={e => setFormData({ ...formData, priceUnit: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
                                     placeholder="0.00"
                                 />
                             </div>
                             <div className="grid gap-2">
-                                <Label htmlFor="priceReplacement">Valor Daño</Label>
+                                <Label htmlFor="priceReplacement">Valor Dano</Label>
                                 <Input
                                     id="priceReplacement"
                                     type="number"
                                     min="0"
                                     step="0.01"
                                     value={formData.priceReplacement === 0 ? '' : formData.priceReplacement}
-                                    onChange={(e) => setFormData({ ...formData, priceReplacement: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
+                                    onChange={e => setFormData({ ...formData, priceReplacement: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
                                     placeholder="0.00"
                                 />
                             </div>

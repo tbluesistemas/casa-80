@@ -11,21 +11,22 @@ export async function GET() {
 
     try {
         const products = await prisma.product.findMany({
-            orderBy: { name: 'asc' },
+            orderBy: { inventoryNumber: 'asc' },
         })
 
-        const data = products.map(p => ({
-            'ID Interno': p.id,
-            'Código': p.code || '',
-            'Nombre': p.name,
-            'Categoría': p.category || '',
-            'Subcategoría': p.subcategory || '',
-            'Novedad': p.novedad || '',
-            'Descripción': p.description || '',
-            'Cantidad Total': p.totalQuantity,
-            'Cantidad Dañada': p.quantityDamaged,
-            'Valor Unitario': p.priceUnit,
-            'Valor Reposición': p.priceReplacement,
+        const data = products.map(product => ({
+            'ID Inventario': product.inventoryNumber,
+            'Activo': product.active ? 'SI' : 'NO',
+            'Codigo / SKU': product.code || '',
+            'Nombre': product.name,
+            'Categoria': product.category || '',
+            'Subcategoria': product.subcategory || '',
+            'Novedad': product.novedad || '',
+            'Descripcion': product.description || '',
+            'Cantidad Total': product.totalQuantity,
+            'Cantidad Danada': product.quantityDamaged,
+            'Valor Unitario': product.priceUnit,
+            'Valor Reposicion': product.priceReplacement,
         }))
 
         const ws = xlsx.utils.json_to_sheet(data)

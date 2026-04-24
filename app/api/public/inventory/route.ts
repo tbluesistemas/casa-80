@@ -18,8 +18,10 @@ export async function OPTIONS() {
 export async function GET() {
     try {
         const products = await prisma.product.findMany({
+            where: { active: true },
             select: {
                 id: true,
+                inventoryNumber: true,
                 code: true,
                 name: true,
                 category: true,
@@ -27,10 +29,11 @@ export async function GET() {
                 novedad: true,
                 description: true,
                 imageUrl: true,
+                imageUrls: true,
                 totalQuantity: true,
                 priceUnit: true,
             },
-            orderBy: { name: 'asc' },
+            orderBy: { inventoryNumber: 'asc' },
         })
 
         return NextResponse.json(
