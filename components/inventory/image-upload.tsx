@@ -214,12 +214,14 @@ export function ImageUpload({
             <div className="space-y-3 w-full">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {imageValues.map((url, index) => (
-                        <div key={`${url}-${index}`} className="relative aspect-square rounded-lg overflow-hidden border bg-muted">
+                        <div key={`${url}-${index}`} className="relative aspect-square rounded-lg overflow-hidden border bg-white">
                             <Image
                                 fill
                                 src={url}
                                 alt={`Imagen ${index + 1}`}
-                                className="object-cover"
+                                sizes="(min-width: 640px) 160px, 50vw"
+                                quality={100}
+                                className="object-contain p-2"
                             />
                             {index === 0 && (
                                 <span className="absolute left-2 top-2 rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-semibold shadow">
@@ -249,12 +251,14 @@ export function ImageUpload({
     return (
         <div className="space-y-4 w-full flex flex-col items-center justify-center">
             {imageValues[0] ? (
-                <div className="relative w-40 h-40 rounded-lg overflow-hidden border">
+                <div className="relative w-40 h-40 rounded-lg overflow-hidden border bg-white">
                     <Image
                         fill
                         src={imageValues[0]}
                         alt="Product image"
-                        className="object-cover"
+                        sizes="160px"
+                        quality={100}
+                        className="object-contain p-2"
                     />
                     <button
                         onClick={() => onRemove(0)}

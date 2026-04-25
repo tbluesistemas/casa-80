@@ -67,6 +67,8 @@ const eventDetailSelect = {
     status: true,
     notes: true,
     deposit: true,
+    damageDepositApplied: true,
+    iva: true,
     transport: true,
     discount: true,
     client: {
@@ -154,6 +156,53 @@ function buildWhereClause(conditions: Prisma.Sql[]) {
     return conditions.length > 0
         ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
         : Prisma.empty
+}
+
+function normalizeLogNotes(notes: string[]) {
+    return notes.filter(Boolean).join(', ')
+}
+
+function getProductChangeNotes(
+    previous: {
+        name: string
+        category: string | null
+        subcategory: string | null
+        novedad: string | null
+        description: string | null
+        totalQuantity: number
+        quantityDamaged: number
+        priceUnit: number
+        priceReplacement: number
+        code: string | null
+        active: boolean
+    },
+    next: Partial<{
+        name: string
+        category: string | null
+        subcategory: string | null
+        novedad: string | null
+        description: string | null
+        totalQuantity: number
+        quantityDamaged: number
+        priceUnit: number
+        priceReplacement: number
+        code: string | null
+        active: boolean
+    }>
+) {
+    const notes: string[] = []
+
+    if (next.name !== undefined && next.name !== previous.name) notes.push(`Nombre: ${previous.name} -> ${next.name}`)
+    if (next.category !== undefined && next.category !== previous.category) notes.push(`Categoría: ${previous.category || '-'} -> ${next.category || '-'}`)
+    if (next.subcategory !== undefined && next.subcategory !== previous.subcategory) notes.push(`Subcategoría: ${previous.subcategory || '-'} -> ${next.subcategory || '-'}`)
+    if (next.novedad !== undefined && next.novedad !== previous.novedad) notes.push(`Novedad: ${previous.novedad || '-'} -> ${next.novedad || '-'}`)
+    if (next.description !== undefined && next.description !== previous.description) notes.push('Descripción actualizada')
+    if (next.priceUnit !== undefined && next.priceUnit !== previous.priceUnit) notes.push(`Valor unitario: ${previous.priceUnit} -> ${next.priceUnit}`)
+    if (next.priceReplacement !== undefined && next.priceReplacement !== previous.priceReplacement) notes.push(`Valor daño: ${previous.priceReplacement} -> ${next.priceReplacement}`)
+    if (next.code !== undefined && next.code !== previous.code) notes.push(`SKU: ${previous.code || '-'} -> ${next.code || '-'}`)
+    if (next.active !== undefined && next.active !== previous.active) notes.push(next.active ? 'Producto habilitado' : 'Producto deshabilitado')
+
+    return notes
 }
 
 // Helper to check availability
@@ -293,13 +342,81 @@ export async function updateProduct(id: string, data: {
 
     try {
         const imageUrls = sanitizeProductImageUrls(data.imageUrls, data.imageUrl)
-        const product = await prisma.product.update({
-            where: { id },
-            data: {
-                ...data,
-                imageUrl: getPrimaryProductImage({ imageUrls }),
-                imageUrls,
+        const product = await prisma.$transaction(async (tx) => {
+            const previous = await tx.product.findUnique({
+                where: { id },
+                select: {
+                    name: true,
+                    category: true,
+                    subcategory: true,
+                    novedad: true,
+                    description: true,
+                    totalQuantity: true,
+                    quantityDamaged: true,
+                    priceUnit: true,
+                    priceReplacement: true,
+                    code: true,
+                    active: true,
+                }
+            })
+
+            if (!previous) {
+                throw new Error('Producto no encontrado')
             }
+
+            const product = await tx.product.update({
+                where: { id },
+                data: {
+                    ...data,
+                    imageUrl: getPrimaryProductImage({ imageUrls }),
+                    imageUrls,
+                }
+            })
+
+            const quantityChange = data.totalQuantity !== undefined
+                ? data.totalQuantity - previous.totalQuantity
+                : 0
+            const damagedChange = data.quantityDamaged !== undefined
+                ? data.quantityDamaged - previous.quantityDamaged
+                : 0
+            const notes = getProductChangeNotes(previous, {
+                name: data.name,
+                category: data.category,
+                subcategory: data.subcategory,
+                novedad: data.novedad,
+                description: data.description,
+                totalQuantity: data.totalQuantity,
+                quantityDamaged: data.quantityDamaged,
+                priceUnit: data.priceUnit,
+                priceReplacement: data.priceReplacement,
+                code: data.code,
+                active: data.active,
+            })
+
+            if (quantityChange !== 0) {
+                notes.push(`Cantidad total: ${previous.totalQuantity} -> ${product.totalQuantity}`)
+            }
+            if (damagedChange !== 0) {
+                notes.push(`Cantidad dañada: ${previous.quantityDamaged} -> ${product.quantityDamaged}`)
+            }
+            if (data.imageUrls !== undefined || data.imageUrl !== undefined) {
+                notes.push('Imágenes actualizadas')
+            }
+
+            if (notes.length > 0) {
+                await tx.inventoryLog.create({
+                    data: {
+                        productId: id,
+                        change: quantityChange,
+                        newTotal: product.totalQuantity,
+                        type: quantityChange !== 0 ? 'ADJUSTMENT' : 'PRODUCT_UPDATE',
+                        verifiedBy: 'Sistema',
+                        notes: normalizeLogNotes(notes),
+                    }
+                })
+            }
+
+            return product
         })
         revalidateTag('products')
         revalidatePath('/inventory')
@@ -330,21 +447,36 @@ export async function createProduct(data: {
     }
     try {
         const imageUrls = sanitizeProductImageUrls(data.imageUrls, data.imageUrl)
-        const product = await prisma.product.create({
-            data: {
-                name: data.name,
-                category: data.category || null,
-                subcategory: data.subcategory || null,
-                novedad: data.novedad || null,
-                description: data.description || null,
-                totalQuantity: data.totalQuantity || 0,
-                priceUnit: data.priceUnit || 0,
-                priceReplacement: data.priceReplacement || 0,
-                imageUrl: getPrimaryProductImage({ imageUrls }),
-                imageUrls,
-                code: data.code?.trim() || null,
-                active: data.active ?? true,
-            }
+        const product = await prisma.$transaction(async (tx) => {
+            const product = await tx.product.create({
+                data: {
+                    name: data.name,
+                    category: data.category || null,
+                    subcategory: data.subcategory || null,
+                    novedad: data.novedad || null,
+                    description: data.description || null,
+                    totalQuantity: data.totalQuantity || 0,
+                    priceUnit: data.priceUnit || 0,
+                    priceReplacement: data.priceReplacement || 0,
+                    imageUrl: getPrimaryProductImage({ imageUrls }),
+                    imageUrls,
+                    code: data.code?.trim() || null,
+                    active: data.active ?? true,
+                }
+            })
+
+            await tx.inventoryLog.create({
+                data: {
+                    productId: product.id,
+                    change: product.totalQuantity,
+                    newTotal: product.totalQuantity,
+                    type: 'PRODUCT_CREATED',
+                    receivedBy: 'Sistema',
+                    notes: `Producto creado${product.quantityDamaged > 0 ? `. Dañados iniciales: ${product.quantityDamaged}` : ''}`,
+                }
+            })
+
+            return product
         })
         revalidateTag('products')
         revalidatePath('/inventory')
@@ -362,6 +494,7 @@ export async function updateEvent(id: string, data: {
     status?: string
     notes?: string
     deposit?: number
+    iva?: number
     transport?: number
     discount?: number
     items?: { productId: string; quantity: number }[]
@@ -372,6 +505,10 @@ export async function updateEvent(id: string, data: {
     }
 
     try {
+        const normalizedIva = data.iva !== undefined
+            ? Math.min(100, Math.max(0, data.iva))
+            : undefined
+
         const currentEvent = await prisma.event.findUnique({
             where: { id },
             include: { items: true }
@@ -431,6 +568,7 @@ export async function updateEvent(id: string, data: {
                     status: data.status,
                     notes: data.notes,
                     deposit: data.deposit,
+                    iva: normalizedIva,
                     transport: data.transport,
                     discount: data.discount
                 }
@@ -547,11 +685,13 @@ export async function createEvent(data: {
     clientId?: string
     notes?: string
     deposit?: number
+    iva?: number
     transport?: number
     discount?: number
     items: CreateEventItem[]
 }) {
-    const { items, clientId, deposit, transport, discount } = data
+    const { items, clientId, deposit, iva, transport, discount } = data
+    const normalizedIva = Math.min(100, Math.max(0, iva || 0))
 
     const role = await getCurrentRole()
     if (role !== 'ADMIN') {
@@ -583,6 +723,7 @@ export async function createEvent(data: {
                 notes: data.notes,
                 clientId: clientId, // Optional link
                 deposit: deposit || 0,
+                iva: normalizedIva,
                 transport: transport || 0,
                 discount: discount || 0,
                 status: 'RESERVADO', // Estado inicial: Reservado
@@ -677,15 +818,19 @@ export async function getInventoryLogs(productId: string) {
 
 export async function getClients(query: string) {
     try {
+        const normalizedQuery = query.trim()
+
         const clients = await prisma.client.findMany({
-            where: {
-                OR: [
-                    { name: { contains: query } },
-                    { document: { contains: query } },
-                    { email: { contains: query } },
-                    { phone: { contains: query } }
-                ]
-            },
+            where: normalizedQuery
+                ? {
+                    OR: [
+                        { name: { contains: normalizedQuery, mode: 'insensitive' } },
+                        { document: { contains: normalizedQuery, mode: 'insensitive' } },
+                        { email: { contains: normalizedQuery, mode: 'insensitive' } },
+                        { phone: { contains: normalizedQuery, mode: 'insensitive' } }
+                    ]
+                }
+                : undefined,
             take: 5,
             orderBy: { name: 'asc' },
         })
@@ -742,7 +887,7 @@ export type ReturnItem = {
     returnedDamaged: number
 }
 
-export async function registerReturn(eventId: string, items: ReturnItem[]) {
+export async function registerReturn(eventId: string, items: ReturnItem[], damageDepositApplied = 0, returnNote = '') {
     const role = await getCurrentRole()
     if (role !== 'ADMIN') {
         return { success: false, error: 'No autorizado: Permisos insuficientes' }
@@ -757,6 +902,7 @@ export async function registerReturn(eventId: string, items: ReturnItem[]) {
             where: { id: eventId },
             select: {
                 status: true,
+                deposit: true,
                 items: {
                     select: {
                         productId: true,
@@ -809,6 +955,11 @@ export async function registerReturn(eventId: string, items: ReturnItem[]) {
         })
 
         const wasCompleted = COMPLETED_EVENT_STATUSES.includes(existingEvent.status as (typeof COMPLETED_EVENT_STATUSES)[number])
+        const normalizedDamageDepositApplied = Math.min(
+            Math.max(0, damageDepositApplied),
+            Math.max(0, existingEvent.deposit)
+        )
+        const normalizedReturnNote = returnNote.trim().slice(0, 500)
 
         await prisma.$transaction(async (tx) => {
             await Promise.all(updateSpecs.map(spec =>
@@ -828,8 +979,8 @@ export async function registerReturn(eventId: string, items: ReturnItem[]) {
 
             const damageUpdates = updateSpecs.filter(spec => spec.damageDiff !== 0)
             if (damageUpdates.length > 0) {
-                await Promise.all(damageUpdates.map(spec =>
-                    tx.product.update({
+                await Promise.all(damageUpdates.map(async (spec) => {
+                    const product = await tx.product.update({
                         where: { id: spec.productId },
                         data: {
                             quantityDamaged: {
@@ -837,13 +988,31 @@ export async function registerReturn(eventId: string, items: ReturnItem[]) {
                             }
                         }
                     })
-                ))
+                    await tx.inventoryLog.create({
+                        data: {
+                            productId: spec.productId,
+                            change: 0,
+                            newTotal: product.totalQuantity,
+                            type: 'DAMAGE_REPORTED',
+                            verifiedBy: session?.user?.email || 'Sistema',
+                            notes: `Daño registrado en devolución. Cambio en dañados: ${spec.damageDiff > 0 ? '+' : ''}${spec.damageDiff}`,
+                        }
+                    })
+                }))
             }
 
             if (!wasCompleted) {
                 await tx.event.update({
                     where: { id: eventId },
-                    data: { status: 'COMPLETADO' },
+                    data: {
+                        status: 'COMPLETADO',
+                        damageDepositApplied: normalizedDamageDepositApplied,
+                    },
+                })
+            } else {
+                await tx.event.update({
+                    where: { id: eventId },
+                    data: { damageDepositApplied: normalizedDamageDepositApplied },
                 })
             }
 
@@ -853,14 +1022,25 @@ export async function registerReturn(eventId: string, items: ReturnItem[]) {
                     previousStatus: wasCompleted ? 'COMPLETADO' : existingEvent.status,
                     newStatus: 'COMPLETADO',
                     changedBy: session?.user?.email || 'Sistema',
-                    reason: wasCompleted ? 'Actualización de devolución' : 'Devolución procesada'
+                    reason: normalizeLogNotes([
+                        wasCompleted ? 'Actualización de devolución' : 'Devolución procesada',
+                        normalizedDamageDepositApplied > 0 ? `Deposito aplicado a danos: ${normalizedDamageDepositApplied}` : '',
+                        normalizedReturnNote ? `Novedad: ${normalizedReturnNote}` : '',
+                    ])
                 }
             })
         })
 
         revalidatePath(`/events/${eventId}`)
         revalidatePath('/events')
-        return { success: true, data: { totalDamageCost } }
+        return {
+            success: true,
+            data: {
+                totalDamageCost,
+                damageDepositApplied: normalizedDamageDepositApplied,
+                remainingDamageCost: Math.max(0, totalDamageCost - normalizedDamageDepositApplied),
+            }
+        }
     } catch (error) {
         console.error('Error registering return:', error)
         return { success: false, error: error instanceof Error ? error.message : 'Error desconocido al registrar la devolución' }
@@ -1345,13 +1525,24 @@ export async function markDamageAsRestored(eventItemId: string) {
 
         // Decrement quantityDamaged on the product (mark as Available again)
         if (updated.returnedDamaged > 0) {
-            await prisma.product.update({
+            const product = await prisma.product.update({
                 where: { id: updated.productId },
                 data: {
                     quantityDamaged: {
                         decrement: updated.returnedDamaged
                     }
                 } as any
+            })
+
+            await prisma.inventoryLog.create({
+                data: {
+                    productId: updated.productId,
+                    change: 0,
+                    newTotal: product.totalQuantity,
+                    type: 'DAMAGE_RESTORED',
+                    verifiedBy: 'Sistema',
+                    notes: `Daño restaurado. Unidades restauradas: ${updated.returnedDamaged}`,
+                }
             })
         }
 
@@ -1705,14 +1896,47 @@ export async function importInventoryFromExcel(products: {
                 };
 
                 if (existing) {
-                    await prisma.product.update({
+                    const updatedProduct = await prisma.product.update({
                         where: { id: existing.id },
                         data: dataToSave
                     })
+                    const quantityChange = dataToSave.totalQuantity - existing.totalQuantity
+                    const damagedChange = dataToSave.quantityDamaged - existing.quantityDamaged
+                    const notes = getProductChangeNotes(existing, dataToSave)
+
+                    if (quantityChange !== 0) {
+                        notes.push(`Cantidad total: ${existing.totalQuantity} -> ${updatedProduct.totalQuantity}`)
+                    }
+                    if (damagedChange !== 0) {
+                        notes.push(`Cantidad dañada: ${existing.quantityDamaged} -> ${updatedProduct.quantityDamaged}`)
+                    }
+
+                    if (notes.length > 0) {
+                        await prisma.inventoryLog.create({
+                            data: {
+                                productId: existing.id,
+                                change: quantityChange,
+                                newTotal: updatedProduct.totalQuantity,
+                                type: quantityChange !== 0 ? 'IMPORT_ADJUSTMENT' : 'IMPORT_UPDATE',
+                                verifiedBy: session.user.email || 'Sistema',
+                                notes: normalizeLogNotes(notes),
+                            }
+                        })
+                    }
                     results.updated++
                 } else {
-                    await prisma.product.create({
+                    const createdProduct = await prisma.product.create({
                         data: dataToSave
+                    })
+                    await prisma.inventoryLog.create({
+                        data: {
+                            productId: createdProduct.id,
+                            change: createdProduct.totalQuantity,
+                            newTotal: createdProduct.totalQuantity,
+                            type: 'IMPORT_CREATED',
+                            receivedBy: session.user.email || 'Sistema',
+                            notes: `Producto creado por importación${createdProduct.quantityDamaged > 0 ? `. Dañados iniciales: ${createdProduct.quantityDamaged}` : ''}`,
+                        }
                     })
                     results.created++
                 }
@@ -1782,6 +2006,7 @@ export async function toggleProductActive(productId: string) {
                 id: true,
                 name: true,
                 active: true,
+                totalQuantity: true,
             }
         })
 
@@ -1800,9 +2025,22 @@ export async function toggleProductActive(productId: string) {
             }
         })
 
-        await prisma.product.update({
-            where: { id: productId },
-            data: { active: nextActive }
+        await prisma.$transaction(async (tx) => {
+            await tx.product.update({
+                where: { id: productId },
+                data: { active: nextActive }
+            })
+
+            await tx.inventoryLog.create({
+                data: {
+                    productId,
+                    change: 0,
+                    newTotal: product.totalQuantity,
+                    type: nextActive ? 'PRODUCT_ENABLED' : 'PRODUCT_DISABLED',
+                    verifiedBy: 'Sistema',
+                    notes: nextActive ? 'Producto habilitado' : 'Producto deshabilitado',
+                }
+            })
         })
 
         revalidateTag('products')

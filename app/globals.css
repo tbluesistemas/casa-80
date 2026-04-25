@@ -65,8 +65,12 @@ html {
   }
 
   /* Prevent images from overflowing their containers */
-  img {
+img {
     max-width: 100%;
+  }
+
+  .reservation-print-footer {
+    display: none;
   }
 
   /* Global hover highlight for parent containers only */
@@ -89,6 +93,10 @@ html {
 }
 
 @media print {
+  @page {
+    size: letter portrait;
+    margin: 0.35in 0.45in 0.65in;
+  }
 
   /* Hide typical layout elements */
   aside,
@@ -117,5 +125,130 @@ html {
     color: black !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+  }
+
+  .reservation-print-page {
+    width: 100% !important;
+    min-height: auto !important;
+    padding: 0 0 104px !important;
+    margin: 0 !important;
+    font-size: 9px !important;
+    line-height: 1.25 !important;
+  }
+
+  .reservation-print-header {
+    margin-bottom: 12px !important;
+  }
+
+  .reservation-print-main-logo {
+    width: 132px !important;
+    height: auto !important;
+  }
+
+  .reservation-print-header h1 {
+    margin-top: 4px !important;
+    font-size: 13px !important;
+    line-height: 1.1 !important;
+  }
+
+  .reservation-print-header p {
+    font-size: 8px !important;
+    line-height: 1.1 !important;
+  }
+
+  .reservation-print-content {
+    gap: 14px 34px !important;
+  }
+
+  .reservation-print-content [data-slot="card"],
+  .reservation-print-content .rounded-lg.border.bg-card {
+    break-inside: avoid !important;
+  }
+
+  .reservation-print-content [data-slot="card-header"] {
+    padding-bottom: 5px !important;
+  }
+
+  .reservation-print-content [data-slot="card-title"] {
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+  }
+
+  .reservation-print-products {
+    margin-top: 4px !important;
+  }
+
+  .reservation-print-products table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    font-size: 8.5px !important;
+  }
+
+  .reservation-print-products th,
+  .reservation-print-products td {
+    padding: 5px 8px !important;
+    vertical-align: top !important;
+  }
+
+  .reservation-print-products th {
+    border-bottom: 1px solid #111 !important;
+    font-size: 8px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0 !important;
+  }
+
+  .reservation-print-products td {
+    border-bottom: 1px solid rgb(0 0 0 / 0.16) !important;
+  }
+
+  .reservation-print-summary {
+    margin-top: 4px !important;
+    padding-bottom: 8px !important;
+  }
+
+  .reservation-print-summary [data-slot="card-content"] {
+    padding: 0 !important;
+  }
+
+  .reservation-print-summary [data-slot="separator-root"] {
+    margin-top: 4px !important;
+    margin-bottom: 4px !important;
+  }
+
+  .reservation-print-summary .print\:w-64 {
+    width: 220px !important;
+  }
+
+  .reservation-print-footer {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    display: block !important;
+    min-height: 74px !important;
+    padding: 7px 0 0 !important;
+    border-top: 1px solid rgb(0 0 0 / 0.35) !important;
+    background: white !important;
+    font-family: var(--font-geist-sans), sans-serif !important;
+  }
+
+  .reservation-print-footer-inner {
+    display: grid !important;
+    grid-template-columns: 42px 1fr !important;
+    align-items: center !important;
+    column-gap: 12px !important;
+    max-width: 6.9in !important;
+    margin: 0 auto !important;
+    text-align: left !important;
+  }
+
+  .reservation-print-footer img {
+    width: 38px !important;
+    height: auto !important;
+  }
+
+  .reservation-print-footer p {
+    margin: 0 !important;
   }
 }

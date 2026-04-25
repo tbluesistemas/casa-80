@@ -73,12 +73,14 @@ export function ProductDetailsDialog({ product, children }: ProductDetailsProps)
                     </div>
 
                     {selectedImage ? (
-                        <div className="relative w-full aspect-square rounded-xl overflow-hidden shadow-sm border bg-muted/30 group">
+                        <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden shadow-sm border bg-white group">
                             <Image
                                 src={selectedImage}
                                 alt={product.name}
                                 fill
-                                className="object-cover transition-transform duration-500 group-hover:scale-105"
+                                sizes="(min-width: 640px) 520px, 100vw"
+                                quality={100}
+                                className="object-contain p-3"
                             />
                             <div className="absolute inset-0 ring-1 ring-inset ring-black/5 rounded-xl pointer-events-none" />
                         </div>
@@ -104,7 +106,9 @@ export function ProductDetailsDialog({ product, children }: ProductDetailsProps)
                                             src={url}
                                             alt={`${product.name} ${index + 1}`}
                                             fill
-                                            className="object-cover"
+                                            sizes="80px"
+                                            quality={100}
+                                            className="object-contain bg-white p-1"
                                         />
                                     </button>
                                 )

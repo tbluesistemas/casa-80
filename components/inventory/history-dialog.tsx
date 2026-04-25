@@ -62,6 +62,7 @@ export function HistoryDialog({ productId, productName }: HistoryDialogProps) {
                                     <th className="py-2 text-right">Total</th>
                                     <th className="py-2">Recibido Por</th>
                                     <th className="py-2">Verificado Por</th>
+                                    <th className="py-2">Notas</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -75,6 +76,7 @@ export function HistoryDialog({ productId, productName }: HistoryDialogProps) {
                                         <td className="py-2 text-right">{log.newTotal}</td>
                                         <td className="py-2">{log.receivedBy || '-'}</td>
                                         <td className="py-2">{log.verifiedBy || '-'}</td>
+                                        <td className="py-2 text-muted-foreground">{log.notes || '-'}</td>
                                     </tr>
                                 ))}
                             </tbody>

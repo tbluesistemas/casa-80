@@ -13,6 +13,14 @@ import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { Plus, Trash2, Printer, Save } from 'lucide-react'
 
+type EditableQuantity = number | ''
+type EditableEventItem = {
+    productId: string
+    quantity: EditableQuantity
+    productName: string
+    priceUnit: number
+}
+
 interface EditEventFormProps {
     event: {
         id: string
@@ -22,6 +30,7 @@ interface EditEventFormProps {
         status: string
         notes?: string | null
         deposit: number
+        iva: number
         transport: number
         discount: number
         items: {
@@ -52,12 +61,13 @@ export function EditEventForm({ event, allProducts }: EditEventFormProps) {
         status: event.status,
         notes: event.notes || '',
         deposit: event.deposit?.toString() || '',
+        iva: event.iva?.toString() || '',
         transport: event.transport?.toString() || '',
         discount: event.discount?.toString() || '',
     })
 
     // State for items
-    const [items, setItems] = useState<{ productId: string; quantity: number; productName: string; priceUnit: number }[]>(
+    const [items, setItems] = useState<EditableEventItem[]>(
         event.items.map(item => ({
             productId: item.productId,
             quantity: item.quantity,
@@ -70,18 +80,19 @@ export function EditEventForm({ event, allProducts }: EditEventFormProps) {
     const [selectedProductId, setSelectedProductId] = useState<string>("")
 
     const totalCost = useMemo(() => {
-        const subtotal = items.reduce((acc, item) => acc + (item.quantity * item.priceUnit), 0)
+        const subtotal = items.reduce((acc, item) => acc + ((Number(item.quantity) || 0) * item.priceUnit), 0)
         const subWithTrans = subtotal + (formData.transport ? parseFloat(formData.transport) : 0)
         const withDiscount = subWithTrans * (1 - (formData.discount ? parseFloat(formData.discount) : 0) / 100)
-        return withDiscount - (formData.deposit ? parseFloat(formData.deposit) : 0)
-    }, [items, formData.deposit, formData.transport, formData.discount])
+        const ivaAmount = withDiscount * ((formData.iva ? parseFloat(formData.iva) : 0) / 100)
+        return withDiscount + ivaAmount
+    }, [items, formData.iva, formData.transport, formData.discount])
 
     const handleSubmit = async (shouldPrint: boolean = false) => {
         setLoading(true)
 
-        const validItems = items.filter(i => i.quantity > 0).map(i => ({
+        const validItems = items.filter(i => Number(i.quantity) > 0).map(i => ({
             productId: i.productId,
-            quantity: i.quantity
+            quantity: Number(i.quantity)
         }))
 
         const result = await updateEvent(event.id, {
@@ -91,6 +102,7 @@ export function EditEventForm({ event, allProducts }: EditEventFormProps) {
             status: formData.status,
             notes: formData.notes || undefined,
             deposit: formData.deposit ? parseFloat(formData.deposit) : 0,
+            iva: formData.iva ? parseFloat(formData.iva) : 0,
             transport: formData.transport ? parseFloat(formData.transport) : 0,
             discount: formData.discount ? parseFloat(formData.discount) : 0,
             items: validItems
@@ -110,11 +122,19 @@ export function EditEventForm({ event, allProducts }: EditEventFormProps) {
     }
 
     const handleQuantityChange = (productId: string, newQuantity: string) => {
-        const qty = parseInt(newQuantity)
-        if (isNaN(qty) || qty < 0) return
+        const sanitized = newQuantity.replace(/[^0-9]/g, '')
+        const qty: EditableQuantity = sanitized === '' ? '' : parseInt(sanitized)
 
         setItems(items.map(item =>
             item.productId === productId ? { ...item, quantity: qty } : item
+        ))
+    }
+
+    const handleQuantityBlur = (productId: string) => {
+        setItems(items.map(item =>
+            item.productId === productId && item.quantity === ''
+                ? { ...item, quantity: 1 }
+                : item
         ))
     }
 
@@ -249,19 +269,20 @@ export function EditEventForm({ event, allProducts }: EditEventFormProps) {
                                 <div className="flex items-center justify-between sm:justify-end gap-3">
                                     <div className="text-right w-auto sm:w-24 shrink-0">
                                         <div className="font-semibold text-sm">
-                                            ${(item.quantity * item.priceUnit).toLocaleString('es-MX')}
+                                            ${((Number(item.quantity) || 0) * item.priceUnit).toLocaleString('es-MX')}
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <Label htmlFor={`qty-${item.productId}`} className="sr-only">Cant.</Label>
                                         <Input
                                             id={`qty-${item.productId}`}
-                                            type="number"
+                                            type="text"
+                                            inputMode="numeric"
                                             className="w-16 sm:w-20 h-8 sm:h-10 text-right"
                                             value={item.quantity}
                                             onChange={(e) => handleQuantityChange(item.productId, e.target.value)}
+                                            onBlur={() => handleQuantityBlur(item.productId)}
                                             disabled={!isEditable}
-                                            min={1}
                                         />
                                         {isEditable && (
                                             <Button
@@ -296,7 +317,7 @@ export function EditEventForm({ event, allProducts }: EditEventFormProps) {
                         </Select>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div className="grid gap-2">
                             <Label htmlFor="deposit">Depósito</Label>
                             <Input
@@ -305,6 +326,21 @@ export function EditEventForm({ event, allProducts }: EditEventFormProps) {
                                 value={formData.deposit}
                                 onChange={(e) => setFormData({ ...formData, deposit: e.target.value.replace(/[^0-9.]/g, '') })}
                                 placeholder="0.00"
+                            />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="iva">IVA (%)</Label>
+                            <Input
+                                id="iva"
+                                type="text"
+                                value={formData.iva}
+                                onChange={(e) => {
+                                    const val = e.target.value.replace(/[^0-9.]/g, '')
+                                    if (val === '' || (parseFloat(val) >= 0 && parseFloat(val) <= 100)) {
+                                        setFormData({ ...formData, iva: val })
+                                    }
+                                }}
+                                placeholder="0"
                             />
                         </div>
                         <div className="grid gap-2">

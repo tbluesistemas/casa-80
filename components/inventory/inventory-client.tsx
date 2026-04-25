@@ -330,13 +330,14 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                 
                                 {productImage ? (
                                     <ProductDetailsDialog product={product}>
-                                        <div className="relative w-full aspect-square bg-muted border-b cursor-pointer transition-opacity hover:opacity-90">
+                                        <div className="relative w-full aspect-square bg-white border-b cursor-pointer transition-opacity hover:opacity-90">
                                             <Image
                                                 src={productImage}
                                                 alt={product.name}
                                                 fill
-                                                className="object-cover"
+                                                className="object-contain p-3"
                                                 sizes="(max-width: 768px) 50vw, 33vw"
+                                                quality={100}
                                             />
                                             {imageCount > 1 && (
                                                 <span className="absolute bottom-2 right-2 rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-semibold shadow">
@@ -484,13 +485,14 @@ export function InventoryClient({ products }: { products: Product[] }) {
                                                 <TableCell className="py-4">
                                                     <ProductDetailsDialog product={product}>
                                                         {productImage ? (
-                                                            <div className="relative h-36 w-36 rounded-xl overflow-hidden border-2 bg-muted shadow hover:scale-105 transition-transform origin-left z-20 cursor-pointer">
+                                                            <div className="relative h-36 w-36 rounded-xl overflow-hidden border-2 bg-white shadow hover:scale-105 transition-transform origin-left z-20 cursor-pointer">
                                                                 <Image
                                                                     src={productImage}
                                                                     alt={product.name}
                                                                     fill
-                                                                    className="object-cover"
+                                                                    className="object-contain p-2"
                                                                     sizes="144px"
+                                                                    quality={100}
                                                                 />
                                                                 {imageCount > 1 && (
                                                                     <span className="absolute bottom-2 right-2 rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-semibold shadow">

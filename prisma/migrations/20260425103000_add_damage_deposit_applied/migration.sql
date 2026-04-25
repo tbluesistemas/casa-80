@@ -1,0 +1,2 @@
+ALTER TABLE "public"."Event"
+ADD COLUMN "damageDepositApplied" DOUBLE PRECISION NOT NULL DEFAULT 0;

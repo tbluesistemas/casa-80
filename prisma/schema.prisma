@@ -56,6 +56,8 @@ model Event {
   status    String      @default("SIN_CONFIRMAR") // SIN_CONFIRMAR, RESERVADO, DESPACHADO, COMPLETADO, CANCELADO
   notes     String?
   deposit   Float       @default(0.0)
+  damageDepositApplied Float @default(0.0)
+  iva       Float       @default(0.0)
   transport Float       @default(0.0)
   discount  Float       @default(0.0)
   items     EventItem[]

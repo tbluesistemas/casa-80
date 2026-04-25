@@ -21,7 +21,7 @@ export function ExcelExport({ products }: { products: Product[] }) {
             "Categoría": p.category || 'General',
             "Descripción": p.description || '',
             "Cantidad": p.totalQuantity,
-            "Valor Reemplazo": p.priceReplacement,
+            "Precio de Daño": p.priceReplacement,
             "Última Actualización": new Date(p.updatedAt).toLocaleDateString()
         }))
 

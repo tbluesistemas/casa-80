@@ -34,7 +34,7 @@ export default async function RootLayout({
   const session = await getCurrentSession();
 
   return (
-    <html lang="es" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning data-scroll-behavior="smooth">
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${styles.body}`}
       >

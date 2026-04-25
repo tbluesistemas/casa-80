@@ -39,6 +39,8 @@ type Product = {
 // Internal type for easier state management
 type CartItems = { [key: string]: number }
 
+const formatNumber = (value: number) => value.toLocaleString('es-CO')
+
 export function BookingForm({ products: initialProducts }: { products: Product[] }) {
     const { role } = useAuth()
     const router = useRouter()
@@ -51,6 +53,7 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
     const [isAllDay, setIsAllDay] = useState(false)
     const [notes, setNotes] = useState('')
     const [deposit, setDeposit] = useState<string>('')
+    const [iva, setIva] = useState<string>('')
     const [transport, setTransport] = useState<string>('')
     const [discount, setDiscount] = useState<string>('')
 
@@ -185,6 +188,7 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
                 endDate: finalEndDate!,
                 notes,
                 deposit: deposit ? parseFloat(deposit) : 0,
+                iva: iva ? parseFloat(iva) : 0,
                 transport: transport ? parseFloat(transport) : 0,
                 discount: discount ? parseFloat(discount) : 0,
                 items,
@@ -199,6 +203,7 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
                 setEndDate(undefined)
                 setNotes('')
                 setDeposit('')
+                setIva('')
                 setTransport('')
                 setDiscount('')
                 setCart({})
@@ -325,10 +330,30 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
                                     type="text"
                                     placeholder="0"
                                     className="pl-9"
-                                    value={deposit ? parseInt(deposit).toLocaleString('es-MX') : ''}
+                                    value={deposit ? formatNumber(parseInt(deposit)) : ''}
                                     onChange={(e) => {
                                         const val = e.target.value.replace(/[^0-9]/g, '')
                                         setDeposit(val)
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* IVA (Optional) */}
+                        <div className="space-y-2">
+                            <Label>IVA (%) (Opcional)</Label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-2.5 text-muted-foreground font-medium">%</span>
+                                <Input
+                                    type="text"
+                                    placeholder="0"
+                                    className="pl-9"
+                                    value={iva}
+                                    onChange={(e) => {
+                                        const val = e.target.value.replace(/[^0-9]/g, '')
+                                        if (val === '' || (parseInt(val) >= 0 && parseInt(val) <= 100)) {
+                                            setIva(val)
+                                        }
                                     }}
                                 />
                             </div>
@@ -343,7 +368,7 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
                                     type="text"
                                     placeholder="0"
                                     className="pl-9"
-                                    value={transport ? parseInt(transport).toLocaleString('es-MX') : ''}
+                                    value={transport ? formatNumber(parseInt(transport)) : ''}
                                     onChange={(e) => {
                                         const val = e.target.value.replace(/[^0-9]/g, '')
                                         setTransport(val)
@@ -388,11 +413,11 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
                                                 <div className="flex-1">
                                                     <div className="font-medium">{item.product!.name}</div>
                                                     <div className="text-xs text-muted-foreground">
-                                                        {item.quantity} × ${(item.product!.priceUnit || 0).toLocaleString()}
+                                                        {item.quantity} × ${formatNumber(item.product!.priceUnit || 0)}
                                                     </div>
                                                 </div>
                                                 <div className="font-semibold">
-                                                    ${item.subtotal.toLocaleString()}
+                                                    ${formatNumber(item.subtotal)}
                                                 </div>
                                             </div>
                                         ))}
@@ -400,24 +425,30 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
                                     <div className="pt-3 border-t-2 border-primary/20 space-y-1">
                                         <div className="flex justify-between items-center text-sm">
                                             <span>Subtotal</span>
-                                            <span>${grandTotal.toLocaleString()}</span>
+                                            <span>${formatNumber(grandTotal)}</span>
                                         </div>
                                         {transport && (
                                             <div className="flex justify-between items-center text-sm">
                                                 <span>Transporte</span>
-                                                <span>+${parseInt(transport).toLocaleString()}</span>
+                                                <span>+${formatNumber(parseInt(transport))}</span>
                                             </div>
                                         )}
                                         {discount && (
                                             <div className="flex justify-between items-center text-sm text-blue-600 font-medium">
                                                 <span>Descuento ({discount}%)</span>
-                                                <span>-${((grandTotal + (transport ? parseInt(transport) : 0)) * (parseInt(discount) / 100)).toLocaleString()}</span>
+                                                <span>-${formatNumber((grandTotal + (transport ? parseInt(transport) : 0)) * (parseInt(discount) / 100))}</span>
+                                            </div>
+                                        )}
+                                        {iva && (
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span>IVA ({iva}%)</span>
+                                                <span>+${formatNumber(((grandTotal + (transport ? parseInt(transport) : 0)) * (1 - (discount ? parseInt(discount) : 0) / 100)) * (parseInt(iva) / 100))}</span>
                                             </div>
                                         )}
                                         {deposit && (
                                             <div className="flex justify-between items-center text-sm text-green-600 font-medium">
-                                                <span>Depósito</span>
-                                                <span>-${parseInt(deposit).toLocaleString()}</span>
+                                                <span>Depósito de garantía</span>
+                                                <span>${formatNumber(parseInt(deposit))}</span>
                                             </div>
                                         )}
                                         <div className="flex justify-between items-center pt-2 font-bold text-lg text-primary">
@@ -426,8 +457,9 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
                                                 {(() => {
                                                     const subWithTrans = grandTotal + (transport ? parseInt(transport) : 0);
                                                     const withDiscount = subWithTrans * (1 - (discount ? parseInt(discount) : 0) / 100);
-                                                    const finalTotal = withDiscount - (deposit ? parseInt(deposit) : 0);
-                                                    return Math.max(0, finalTotal).toLocaleString();
+                                                    const ivaAmount = withDiscount * ((iva ? parseInt(iva) : 0) / 100);
+                                                    const finalTotal = withDiscount + ivaAmount;
+                                                    return formatNumber(Math.max(0, finalTotal));
                                                 })()}
                                             </span>
                                         </div>
@@ -499,13 +531,14 @@ export function BookingForm({ products: initialProducts }: { products: Product[]
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
-                            {filteredProducts.map(product => (
+                            {filteredProducts.map((product, index) => (
                                 <ProductCard
                                     key={product.id}
                                     product={product}
                                     quantity={cart[product.id] || 0}
                                     onUpdate={handleUpdateQuantity}
                                     onSet={handleSetQuantity}
+                                    priority={index < 3}
                                 />
                             ))}
                         </div>
@@ -520,12 +553,14 @@ function ProductCard({
     product,
     quantity,
     onUpdate,
-    onSet
+    onSet,
+    priority = false
 }: {
     product: Product,
     quantity: number,
     onUpdate: (id: string, delta: number) => void
     onSet: (id: string, val: string) => void
+    priority?: boolean
 }) {
     const [inputValue, setInputValue] = useState<string>("")
     const [isFocused, setIsFocused] = useState(false)
@@ -572,14 +607,17 @@ function ProductCard({
             onClick={() => !showControls && stockDisplay > 0 && onUpdate(product.id, 1)}
         >
             {product.imageUrl && (
-                <div className="relative w-full aspect-square mb-2 rounded-md overflow-hidden bg-muted" onClick={(e) => e.stopPropagation()}>
+                <div className="relative w-full aspect-square mb-2 rounded-md overflow-hidden border bg-white" onClick={(e) => e.stopPropagation()}>
                     <ProductDetailsDialog product={product}>
                         <div className="relative w-full h-full cursor-pointer hover:opacity-90 transition-opacity">
                             <Image
                                 src={product.imageUrl}
                                 alt={product.name}
                                 fill
-                                className="object-cover"
+                                sizes="(min-width: 1280px) 25vw, (min-width: 768px) 33vw, (min-width: 640px) 50vw, 100vw"
+                                priority={priority}
+                                quality={100}
+                                className="object-contain p-2"
                             />
                         </div>
                     </ProductDetailsDialog>
@@ -591,7 +629,7 @@ function ProductCard({
                     <p className={stockColor}>Disp: {stockDisplay}</p>
                     {product.priceUnit !== undefined && (
                         <p className="font-medium text-muted-foreground">
-                            ${product.priceUnit.toLocaleString()}
+                            ${formatNumber(product.priceUnit)}
                         </p>
                     )}
                 </div>

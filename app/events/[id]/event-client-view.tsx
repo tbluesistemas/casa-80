@@ -58,21 +58,24 @@ export function EventClientView({ event, role }: { event: any; role: string }) {
     const subWithTrans = subtotal + transport;
     const discountAmount = subWithTrans * (discountPercent / 100);
     const deposit = event.deposit || 0;
-    const total = subWithTrans - discountAmount + deposit; // Depósito se suma como garantía
+    const withDiscount = subWithTrans - discountAmount;
+    const ivaPercent = event.iva || 0;
+    const ivaAmount = withDiscount * (ivaPercent / 100);
+    const total = withDiscount + ivaAmount;
 
     const startDate = formatDateInfo(event.startDate);
     const endDate = formatDateInfo(event.endDate);
 
     return (
-        <div className="flex-1 space-y-4 md:space-y-6 p-4 md:p-8 pt-4 md:pt-6 max-w-7xl mx-auto print:p-0 print:pt-4 print:max-w-none">
+        <div className="reservation-print-page flex-1 space-y-4 md:space-y-6 p-4 md:p-8 pt-4 md:pt-6 max-w-7xl mx-auto print:p-0 print:pt-4 print:max-w-none">
             {/* --- PRINT LOGO HEADER (only visible when printing) --- */}
-            <div className="hidden print:flex print:flex-col print:items-center print:mb-4">
+            <div className="reservation-print-header hidden print:flex print:flex-col print:items-center print:mb-4">
                 <Image
                     src="/logo.png"
                     alt="Casa 80 - Logistik Events"
-                    width={180}
-                    height={100}
-                    className="object-contain"
+                    width={150}
+                    height={82}
+                    className="reservation-print-main-logo object-contain"
                     priority
                 />
                 <div className="text-center mt-2">
@@ -82,7 +85,7 @@ export function EventClientView({ event, role }: { event: any; role: string }) {
             </div>
 
             {/* --- HEADER --- */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
                 <div className="space-y-1">
                     <div className="flex items-center gap-3">
                         <h2 className="text-2xl md:text-3xl font-bold tracking-tight print:text-xl truncate max-w-[250px] sm:max-w-none">{event.name}</h2>
@@ -152,12 +155,12 @@ export function EventClientView({ event, role }: { event: any; role: string }) {
 
             <Separator className="print:hidden" />
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 print:grid print:grid-cols-2 print:gap-x-8 print:gap-y-4 print:auto-rows-min">
+            <div className="reservation-print-content grid grid-cols-1 md:grid-cols-3 gap-6 print:grid print:grid-cols-2 print:gap-x-8 print:gap-y-4 print:auto-rows-min">
 
                 {/* --- LEFT COLUMN (2/3) --- */}
                 <div className="md:col-span-2 space-y-6 print:contents">
                     {/* ITEMS TABLE */}
-                    <Card className="overflow-hidden print:order-3 print:col-span-2 print:shadow-none print:border-0">
+                    <Card className="reservation-print-products overflow-hidden print:order-3 print:col-span-2 print:shadow-none print:border-0">
                         <CardHeader className="bg-muted/30 pb-4 px-4 md:px-6 print:bg-transparent print:p-0 print:pb-2">
                             <div className="flex items-center justify-between">
                                 <CardTitle className="text-base md:text-lg flex items-center gap-2 print:text-sm">
@@ -174,7 +177,7 @@ export function EventClientView({ event, role }: { event: any; role: string }) {
                         </CardHeader>
                         <CardContent className="p-0">
                             {/* Mobile: Cards */}
-                            <div className="md:hidden divide-y">
+                            <div className="md:hidden print:hidden divide-y">
                                 {event.items.map((item: any) => (
                                     <div key={item.productId} className="p-4 space-y-2">
                                         <div className="flex justify-between gap-2">
@@ -199,7 +202,7 @@ export function EventClientView({ event, role }: { event: any; role: string }) {
                             </div>
 
                             {/* Desktop: Table */}
-                            <div className="hidden md:block">
+                            <div className="hidden md:block print:block">
                                 <Table>
                                     <TableHeader>
                                         <TableRow className="bg-muted/10 print:bg-transparent print:border-b-black">
@@ -242,7 +245,7 @@ export function EventClientView({ event, role }: { event: any; role: string }) {
                     </Card>
 
                     {/* FINANCIAL SUMMARY */}
-                    <Card className="print:order-4 print:shadow-none print:border-0">
+                    <Card className="reservation-print-summary print:order-4 print:col-span-2 print:shadow-none print:border-0">
                         <CardContent className="p-6 print:p-0">
                             <div className="flex flex-col items-end gap-2 text-sm print:text-xs">
                                 <div className="flex justify-between w-full md:w-1/2 lg:w-1/3 text-sm print:w-64">
@@ -263,10 +266,16 @@ export function EventClientView({ event, role }: { event: any; role: string }) {
                                         <span className="text-blue-600 font-medium">-{formatCurrency(discountAmount)}</span>
                                     </div>
                                 )}
+                                {ivaPercent > 0 && (
+                                    <div className="flex justify-between w-full md:w-1/2 lg:w-1/3 text-sm print:w-64">
+                                        <span className="text-muted-foreground print:text-black">IVA ({ivaPercent}%)</span>
+                                        <span>+{formatCurrency(ivaAmount)}</span>
+                                    </div>
+                                )}
                                 {deposit > 0 && (
                                     <div className="flex justify-between w-full md:w-1/2 lg:w-1/3 text-sm print:w-64">
-                                        <span className="text-muted-foreground print:text-black">Depósito de garantía</span>
-                                        <span className="font-medium">+{formatCurrency(deposit)}</span>
+                                        <span className="text-muted-foreground print:text-black">Depósito de garantía (se devuelve)</span>
+                                        <span className="font-medium">{formatCurrency(deposit)}</span>
                                     </div>
                                 )}
                                 <Separator className="my-2 w-full md:w-1/2 lg:w-1/3 print:w-64 print:my-1" />
@@ -433,6 +442,29 @@ export function EventClientView({ event, role }: { event: any; role: string }) {
                     </Card>
                 </div>
             </div>
+
+            {/* PRINT FOOTER */}
+            <footer className="reservation-print-footer">
+                <div className="reservation-print-footer-inner">
+                    <Image
+                        src="/logo.png"
+                        alt="Casa 80"
+                        width={42}
+                        height={42}
+                        className="object-contain opacity-90 shrink-0"
+                    />
+                    <div>
+                        <p className="text-[10px] leading-3 font-semibold tracking-wide">
+                            ¡Somos el aliado perfecto para todos tus eventos!
+                        </p>
+                        <div className="mt-1 text-[8px] leading-3 text-black/85">
+                            <p>Dirección: Calle 80 #73-35, barrio paraíso - Barranquilla atlántico</p>
+                            <p>Celular/Whatsapp: +57 3172100592 · Correo electrónico: casa80alquiler@gmail.com · Página Web: ¡Próximamente!</p>
+                            <p>Instagram: @casa80alquiler · Tiktok: @casa80alquiler · Facebook: @casa 80</p>
+                        </div>
+                    </div>
+                </div>
+            </footer>
             <AutoPrint />
         </div>
     );

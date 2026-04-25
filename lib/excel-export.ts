@@ -130,7 +130,7 @@ export function exportInventoryToExcel(products: unknown[]) {
             'En Uso': inUse,
             'Disponible': product.active === false ? 0 : (product.totalQuantity - inUse),
             'Precio Unitario': formatCurrencyForExcel(product.priceUnit ?? 0),
-            'Precio Reemplazo': formatCurrencyForExcel(product.priceReplacement),
+            'Precio de Daño': formatCurrencyForExcel(product.priceReplacement),
             'Valor Total': formatCurrencyForExcel(product.totalQuantity * product.priceReplacement),
         }
     })
